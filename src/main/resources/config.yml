@@ -1,0 +1,345 @@
+# Crafting recipe for the Radio Terminal (a tagged Lodestone). Only tagged Lodestones become radios;
+# ordinary Lodestones stay vanilla. Restart the server after editing.
+recipe:
+  # Three rows of three characters; a space is an empty slot.
+  shape:
+    - " L "
+    - "ROR"
+    - " A "
+  # Each character maps to a Bukkit Material name.
+  ingredients:
+    L: LIGHTNING_ROD     # the antenna
+    R: REDSTONE
+    O: LODESTONE
+    A: AMETHYST_SHARD    # the crystal
+
+# Frequencies (channels) are claimed by the first player to tune to a name.
+frequencies:
+  # Free a frequency after it has had no radios for this many hours (0 = never).
+  abandon-empty-hours: 24
+  # Free a frequency whose owner has not been online for this many days (0 = never).
+  abandon-inactive-days: 30
+
+# Radio fuel burns with time, not with use.
+fuel:
+  # Seconds of fuel a working radio (powered, tuned to a frequency it can use, chunk loaded)
+  # loses every real second. 0 turns the drain off.
+  drain-per-second: 1
+
+broadcast:
+  # Seconds a player must wait between /broadcast messages (voice is not limited).
+  cooldown-seconds: 3
+
+announcements:
+  # System announcements (/radio announce, used by AutomatedTrains) are carried by the nearest
+  # powered radio on the channel within this many blocks of the announcement point. They are free.
+  search-radius: 16
+
+# Receiver Core: the circuit part. Same format as "recipe" above.
+core-recipe:
+  shape:
+    - "GCG"
+    - "QDQ"
+    - "KRK"
+  ingredients:
+    G: GOLD_INGOT
+    C: COMPARATOR
+    Q: QUARTZ_BLOCK
+    D: DIAMOND
+    K: COPPER_INGOT
+    R: REDSTONE_BLOCK
+
+# Pocket Receiver (a tagged Compass): shapeless. RADIO_CORE means a genuine Receiver Core.
+receiver-recipe:
+  ingredients:
+    - RADIO_CORE
+    - COMPASS
+    - LIGHTNING_ROD
+
+# Underground Antenna: a part for the Pocket Receiver's Chassis slot (a tagged Blaze Rod). Shapeless.
+antenna-recipe:
+  ingredients:
+    - LIGHTNING_ROD
+    - COPPER_INGOT
+    - COPPER_INGOT
+    - REDSTONE_BLOCK
+
+# Radio Jukebox: a tagged Jukebox. Shapeless; RADIO_CORE is a genuine Core.
+jukebox-recipe:
+  ingredients:
+    - JUKEBOX
+    - RADIO_CORE
+    - NOTE_BLOCK
+
+# Signal Cable (a tagged Copper Chain that cannot be placed): shaped. "amount" is how many one craft makes.
+cable-recipe:
+  amount: 2
+  shape:
+    - "CGC"
+    - " R "
+  ingredients:
+    C: COPPER_INGOT
+    G: GOLD_NUGGET
+    R: REDSTONE
+
+# Who counts as standing at a terminal (for text, voice and the music from a Radio Jukebox): within 5 blocks to the
+# side, and within this many blocks above or below the middle of the terminal's block.
+listening:
+  vertical-range: 6
+# Signal Repeater (a tagged Lightning Rod): shapeless. RADIO_CORE means a genuine Receiver Core.
+repeater-recipe:
+  ingredients:
+    - LIGHTNING_ROD
+    - RADIO_CORE
+    - COPPER_INGOT
+    - COPPER_INGOT
+    - AMETHYST_SHARD
+# Relays: a Radio Terminal with a Signal Repeater linked to it (Signal Cables, as for a jukebox) passes on every
+# signal it hears on its channel, using its own radius and fuel, so towers that cannot reach each other can talk
+# through it. A terminal can have one repeater. The terminal must be powered, tuned to a frequency its operator
+# may use, and have its chunk loaded, or the chain breaks there. Every relay a signal passes through costs one
+# signal bar for people at the far terminal (four bars is clean); how bad the crackle is comes from
+# portable.static-max-loss (0 = no static).
+relay:
+  # How many relays in a row a signal may pass through (0 turns relaying off). Each radio hears a signal at most
+  # once, so a ring of relays cannot loop.
+  max-hops: 3
+  # Extra seconds of fuel a working relay burns per second (0 = free). Fractions are fine.
+  extra-drain-per-second: 0.5
+  # Linking a repeater costs one Signal Cable per this many blocks of distance...
+  blocks-per-cable: 4
+  # ...and a link can be at most this long.
+  max-link-length: 16
+# Signal Jammer (a tagged Respawn Anchor that is always full and never explodes when used): shapeless.
+# RADIO_CORE means a genuine Receiver Core.
+jammer-recipe:
+  ingredients:
+    - RADIO_CORE
+    - RADIO_CORE
+    - WITHER_SKELETON_SKULL
+    - NETHER_STAR
+    - DIAMOND_BLOCK
+    - DIAMOND_BLOCK
+    - GHAST_TEAR
+    - GHAST_TEAR
+# Jammers: placed, then linked to a Radio Terminal with Signal Cables. A jammer has no fuel of its own: it burns the
+# terminal's, and jams EVERY channel within that terminal's radius (strongest in the middle, fading to the edge, so
+# people lose up to all four bars). If the terminal passes signals on through relays, the jam is passed on too, one
+# bar weaker per relay. Only the strongest jammer counts at any spot. It warms up, jams, overheats (it only shuts down),
+# cools down, and warms up again. If its terminal runs out of fuel it counts down and fails catastrophically (an explosion).
+jammer:
+  # The most a jam can reach from a terminal, in blocks, whatever its fuel (an Ender Pearl terminal has no radius
+  # cap of its own). A jam reaches the terminal's radius or this, whichever is smaller; the same cap applies around
+  # every relay it is passed on through.
+  max-radius: 150
+  # Seconds to reach full strength (the jam ramps up meanwhile)...
+  warmup-seconds: 60
+  # ...seconds of full jamming before it overheats...
+  overheat-after-seconds: 600
+  # ...and seconds it stays off to cool down before warming up again.
+  cooldown-seconds: 60
+  # Extra fuel burned from the terminal while warming up or jamming, as a multiple of what a playing jukebox
+  # burns (music.extra-drain-per-second).
+  drain-multiplier: 2.0
+  # When the terminal runs dry: seconds of warning, and who gets the red chat alert each second.
+  countdown-seconds: 10
+  # Keep the warning radius at about twice the explosion power, plus 2 (an explosion hurts out to about twice its power).
+  warning-radius: 12
+  # The explosion itself (a Respawn Anchor's is 5).
+  explosion-power: 5.0
+  explosion-fire: false
+  explosion-breaks-blocks: true
+  # How far the low hum carries (volume 6 is about 100 blocks) and no beam is drawn.
+  sound-volume: 6.0
+  # People who are listening to a jammed frequency (a Pocket Receiver tuned to it, or standing at a tuned terminal)
+  # are told in chat, once, when they tune in while jammed or when the jam reaches them: "Heavy interference here.
+  # Signal 2/4." or, when nothing is left, "Jammed. No signal on this frequency." At most this often (seconds) per
+  # person and channel. People without a radio on a covered channel are told nothing.
+  listen-notice-cooldown-seconds: 30
+  # /radio jammer list works within this many blocks of a jammer (admins can list every jammer from anywhere).
+  list-range: 10
+  # Linking costs one Signal Cable per this many blocks, and a link can be at most this long.
+  blocks-per-cable: 4
+  max-link-length: 16
+  # A jammer needs open sky: it cannot be placed with more than this many blocks of cover above it (a roof or a
+  # tree is fine, a bunker is not), nor in the Nether or the End. One that gets buried shuts down (it does not
+  # explode) until it is uncovered.
+  max-cover: 4
+  # When a jammer reaches full strength, people at the terminals it covers and holders of Pocket Receivers tuned
+  # to a covered channel get a chat alert on that channel ("interference detected", later "cleared"), without any
+  # place or name. A channel is announced at most this often (seconds).
+  alert-cooldown-seconds: 60
+# Garbled text: radio messages (/broadcast and station announcements) reach each listener as their own signal
+# carries them. Four bars is clean; weaker signals lose letters to static, and at one bar this share of the
+# letters are lost (and some whole words). Bars come from distance, depth, relays and jamming. 0 turns it off.
+garble:
+  max-share: 0.5
+# Signal Scanner (a tagged Spyglass): shapeless. RADIO_CORE means a genuine Receiver Core.
+scanner-recipe:
+  ingredients:
+    - RADIO_CORE
+    - SPYGLASS
+    - ENDER_PEARL
+    - AMETHYST_SHARD
+# Scanners are listen-only. On an ENCRYPTED frequency they can tune in without the password, but hear noise (garbled
+# text, voice that breaks up) until they have decoded it. Decoding is a code-breaking puzzle (the Decoder, opened by
+# right-clicking the scanner): break a few hidden codes in a row, and every code takes a share of the noise away.
+# It needs a signal (a weak one means a longer wait between guesses), and it belongs to one scanner and one password:
+# changing the password starts everyone again. A longer password makes a longer code (4 colours up to 5 characters,
+# 5 up to 9, 6 beyond; a password saved before the length was kept counts as 5).
+scanner:
+  puzzle:
+    # How many codes in a row it takes to decode a frequency.
+    stages: 3
+    # Guesses allowed per code. Running out scrambles the code and locks the Decoder for lockout-seconds.
+    max-guesses: 10
+    lockout-seconds: 20
+    # Seconds between guesses at full signal (four bars); fewer bars stretch it (one bar = four times as long).
+    guess-cooldown-seconds: 5
+  # A scanner that is off its frequency loses one cleared code per this many minutes.
+  decay-minutes-per-stage: 7
+  # When a scanner starts scanning a frequency, its people get one YELLOW alert. It only warns again after nobody
+  # has scanned that frequency for this many minutes.
+  yellow-rearm-minutes: 10
+  # After a scanner finishes decoding, the RED alert comes after a random delay between these (seconds),
+  # which gives the scanner a short window of clear listening.
+  red-alert-delay-min-seconds: 30
+  red-alert-delay-max-seconds: 90
+# Weather and night. Rain or snow costs a listener out in the open some signal bars, a thunderstorm costs more, but
+# weather never costs more than max-loss and only weakens a signal that is still there (it never silences it alone).
+# Not felt under a roof, in a hot biome (desert, savanna, badlands), in the Nether or End, or with an Underground
+# Antenna fitted. At night terminals reach night-range-bonus (0.25 = 25%) farther. The bonus goes past the limit their
+# fuel sets (so a terminal at the redstone limit of 250 reaches 313 at night) unless night-respects-fuel-cap is true;
+# a Pocket Receiver's own range limit still applies.
+weather:
+  enabled: true
+  rain-loss: 1
+  storm-loss: 2
+  max-loss: 2
+  night-range-bonus: 0.25
+  # true = the night bonus never takes a terminal beyond what its fuel allows (then a terminal already at that limit gets nothing).
+  night-respects-fuel-cap: false
+  # Night is this part of the day (ticks: 13000 is dusk, 23000 is dawn).
+  night-start-tick: 13000
+  night-end-tick: 23000
+  # A short chat notice to people using radios when rain or thunder starts.
+  notices: true
+  # A lightning strike this close (in blocks) to a terminal knocks it offline for a random time between these
+  # (seconds). Its listeners are told, and it announces itself on its frequency again when it comes back. A jammer on
+  # that terminal overheats (it does not explode): it cools down, then warms up from scratch. A vanilla Lightning Rod
+  # nearby draws strikes away from it. A strike this close to a Radio Jukebox, Signal Repeater or Signal Jammer also
+  # destroys the Signal Cable linking it to its terminal (no refund; it has to be linked again), unless cut-cables is false.
+  lightning:
+    enabled: true
+    # A strike this many blocks from a terminal (or from a linked device) counts as a hit.
+    radius: 5
+    cut-cables: true
+    min-seconds: 10
+    max-seconds: 30
+# Music: Radio Jukeboxes play vanilla discs over the channel of the terminal they are linked to.
+music:
+  # Linking costs one Signal Cable per this many blocks of distance (rounded up)...
+  blocks-per-cable: 4
+  # ...and a link can be at most this long.
+  max-link-length: 16
+  # While a disc plays, the linked terminal burns this many extra seconds of fuel per second (0 = free).
+  extra-drain-per-second: 0.5
+  # The song clock is shared and never restarts for a listener; vanilla cannot start a sound partway through.
+  # People in range when a round starts (or within this many seconds after) hear it from the start...
+  join-grace-seconds: 5
+  # ...and later arrivals are told when it comes round again.
+  # How many discs one jukebox can queue (1-9).
+  queue-size: 5
+  # What a new jukebox does when a song ends (each jukebox can change this in its menu):
+  #   loop = play the queue round and round; one = repeat the current song; once = play the discs once.
+  # Whenever the next song starts, everyone in range at that moment hears it from the start, in sync.
+  repeat-mode: loop
+  # Volume of the music for each listener (1.0 = normal).
+  volume: 1.0
+  # Optional song lengths in seconds, by the part after MUSIC_DISC_ (used only to know when a disc has ended).
+  # Vanilla lengths are built in; add an entry only to correct one. Example:  PIGSTEP: 149
+  lengths: {}
+
+# Earpiece: also fits the Chassis slot (one part at a time) and keeps a receiver's audio private. Shapeless;
+# RADIO_CORE is a genuine Core.
+earpiece-recipe:
+  ingredients:
+    - RADIO_CORE
+    - NAUTILUS_SHELL
+    - LEATHER
+
+# Pocket Receivers are listen-only: they never transmit, and use no fuel or battery.
+portable:
+  # Furthest a receiver can hear or scan (blocks, flat distance). A terminal is only heard if you
+  # are also inside that terminal's own transmission radius, so the smaller of the two applies.
+  range: 300
+  # Signal comes in 1-4 bars: the closer you are to a terminal, the more. Rock above you then costs bars.
+  # Set to false to ignore depth completely.
+  depth-penalty: true
+  # Blocks of cover (roofs, trees) that cost nothing...
+  free-depth: 4
+  # ...then every this many blocks of cover below the surface costs one bar. With the defaults a
+  # receiver is dead about 52 blocks down. Dimensions without a sky (Nether, End) are not affected.
+  depth-per-bar: 12
+  # An installed Underground Antenna ignores depth but only reaches this fraction of the distance.
+  antenna-range-multiplier: 0.5
+  # When a receiver loses its chosen channel it hops to the nearest public channel in range (never a
+  # private one) and returns once the chosen channel is clearly back. Each receiver has its own switch
+  # in its menu; this is the setting for receivers that were never toggled.
+  auto-scan-default: true
+  # Voice for Pocket Receivers (needs Simple Voice Chat). Holders hear the channel's voice as well as its text.
+  voice: true
+  # Without an Earpiece the receiver plays on a speaker: players within this many blocks of the holder
+  # hear it too (text and voice). With an Earpiece only the holder does.
+  speaker-radius: 5
+  # Static for Pocket Receivers, by signal strength. At 4 bars everything is clean; the loss rises evenly to
+  # this share at 1 bar: that share of voice packets is dropped (crackling speech), and music gets crackle
+  # layered over it more often. People at a terminal are never affected. 0 turns static off.
+  static-max-loss: 0.4
+
+# Blank Disc (a tagged Disc Fragment): shaped. "amount" is how many one craft makes.
+blank-disc-recipe:
+  amount: 2
+  shape:
+    - " C "
+    - "CNC"
+    - " C "
+  ingredients:
+    C: COAL
+    N: NOTE_BLOCK
+
+# Player-added note-block songs: /radio song add, or the Add song button in a Radio Jukebox menu.
+songs:
+  # How many songs one player can have at a time (admins have no limit).
+  max-per-player: 5
+  # A song file may not be larger than this, or longer than this, or hold more notes than this.
+  max-kilobytes: 300
+  max-minutes: 15
+  # MP3 songs (they play through the Simple Voice Chat plugin, and cannot be added without it) may be this
+  # large. Larger files need more server memory while they are converted (roughly 30 MB of RAM per minute of song).
+  max-audio-megabytes: 10
+  max-notes: 40000
+  # Links must be https and point straight at a .nbs (note-block song) or .mp3 (audio, needs voice chat) file.
+  # Turn these off only when testing locally.
+  require-https: true
+  require-nbs-extension: true
+  # Links to private or local addresses (your own network) are refused; leave this off.
+  allow-private-links: false
+  # Some songs use "custom instruments" (sound files only their composer has). How to play those notes:
+  #   match    = guess a vanilla instrument from the custom instrument's name (a "Kick" becomes the bass drum),
+  #              and use the fallback when the name gives no clue
+  #   fallback = play every custom note as the fallback instrument
+  #   skip     = leave those notes out
+  custom-instruments: match
+  # The stand-in instrument: harp, bass, basedrum, snare, hat, guitar, flute, bell, chime, xylophone,
+  # iron_xylophone, cow_bell, didgeridoo, bit, banjo or pling.
+  custom-instrument-fallback: harp
+  # Song names containing any of these words are refused (case-insensitive).
+  banned-words: []
+
+# The "<player> is speaking on this frequency" chat alert sent when someone starts talking over a radio.
+voice:
+  # Also show the alert to the speaker themselves. Handy for testing; turn it off for normal play.
+  speaker-alert-self: true
+  # Seconds before the same speaker can trigger the alert again (use a small number like 1 when testing).
+  alert-cooldown-seconds: 10

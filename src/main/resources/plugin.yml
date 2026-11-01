@@ -1,0 +1,42 @@
+name: RadioNetwork
+version: '${version}'
+main: dev.radionetwork.RadioNetworkPlugin
+api-version: '${apiVersion}'
+description: Auto-powered stationary text/voice radio network built on Lodestones.
+authors:
+  - RadioNetwork contributors
+softdepend:
+  - voicechat
+
+commands:
+  broadcast:
+    description: Broadcast a message over the radio terminal you are standing next to.
+    usage: /broadcast <message>
+    aliases:
+      - bc
+    permission: radionetwork.use
+
+  radio:
+    description: Manage your radio frequency (members, trust, access, transfer, release) or, for ops, locate every radio.
+    usage: /radio <info|members|list|claim|mode|access|trust|untrust|transfer|release|locate|give>
+    permission: radionetwork.use
+
+permissions:
+  radionetwork.use:
+    description: Use /broadcast and radio terminals.
+    default: true
+  radionetwork.admin:
+    description: Configure any radio terminal and manage any frequency.
+    default: op
+  radionetwork.locate:
+    description: Use /radio locate to list every radio with teleport links.
+    default: op
+  radionetwork.announce:
+    description: Use /radio announce to send a free station announcement on a channel.
+    default: op
+  radionetwork.give:
+    description: Use /radio give to hand out the craftable radio items.
+    default: op
+  radionetwork.songs.add:
+    description: Add note-block songs from a link (needs a Blank Disc).
+    default: true

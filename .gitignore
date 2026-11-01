@@ -1,0 +1,12 @@
+# Gradle and build output
+.gradle/
+build/
+*.jar
+
+# macOS / IDE
+.DS_Store
+.idea/
+*.iml
+
+# the Gradle wrapper jar is needed to build
+!gradle/wrapper/gradle-wrapper.jar
