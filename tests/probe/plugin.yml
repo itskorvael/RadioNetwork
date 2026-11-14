@@ -1,0 +1,5 @@
+name: RadioProbe
+version: 1
+main: probe.RadioProbe
+api-version: "26.1"
+depend: [RadioNetwork]

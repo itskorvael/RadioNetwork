@@ -53,34 +53,26 @@ public final class JukeboxGui implements InventoryHolder {
                 Track track = queue.get(slot);
                 ItemStack icon = music.itemFor(track);
                 ItemMeta meta = icon.getItemMeta();
-                meta.displayName(Chat.item((playing ? "§d♪ Now playing: §f" : "§7#" + (slot + 1) + ": §f") + music.name(track)));
-                meta.lore(Arrays.stream(new String[]{
-                        playing && box.finished() ? "§8(finished)" : playing ? "§7This one is on the air." : "§7Waiting its turn.",
-                        track.isSong() ? "§7A note-block song." : "§7A music disc.",
-                        "§eClick to take it out."}).map(Chat::item).toList());
+                meta.displayName(Chat.item((playing ? "§dPlaying: §f" : "§7#" + (slot + 1) + ": §f") + music.name(track)));
+                meta.lore(playing ? List.of(Chat.item(box.finished() ? "§8Finished." : "§7On air.")) : List.of());
                 icon.setItemMeta(meta);
                 inventory.setItem(slot, icon);
             } else {
-                inventory.setItem(slot, item(Material.GRAY_STAINED_GLASS_PANE, "§8Empty slot",
-                        "§7Right-click the jukebox with a disc", "§7to add it to the queue."));
+                inventory.setItem(slot, item(Material.GRAY_STAINED_GLASS_PANE, "§8Empty"));
             }
         }
-        inventory.setItem(SLOT_SKIP, item(Material.ARROW, "§6Skip", "§7Move on to the next disc.", "§eClick to skip."));
-        inventory.setItem(SLOT_REPEAT, item(Material.REPEATER, "§6Repeat: §f" + box.mode().label(),
-                "§7Loop the queue, repeat the current song,",
-                "§7or play the discs once.", "§eClick to change."));
+        inventory.setItem(SLOT_SKIP, item(Material.ARROW, "§6Skip"));
+        inventory.setItem(SLOT_REPEAT, item(Material.REPEATER, "§6Repeat: §f" + box.mode().label()));
         inventory.setItem(SLOT_ADD_SONG, item(Material.WRITABLE_BOOK, "§6Add a song",
-                "§7Hold a Blank Disc, then click here.", "§7Give it a name and a link to an .mp3 file",
-                "§7and you get a Song Disc.", "§eClick to add."));
-        inventory.setItem(SLOT_TAKE_ALL, item(Material.HOPPER, "§6Take all discs out", "§7Empties the queue and stops the music.",
-                "§eClick to take them."));
+                "§7Needs a Blank Disc in hand."));
+        inventory.setItem(SLOT_TAKE_ALL, item(Material.HOPPER, "§6Take all out"));
 
         Radio terminal = music.terminalOf(box);
         String link;
         if (terminal == null) {
-            link = "§cNot linked. Use Signal Cables.";
+            link = "§cNot linked.";
         } else if (!terminal.isTuned()) {
-            link = "§eLinked to an untuned terminal.";
+            link = "§7Linked to an untuned terminal.";
         } else {
             link = "§7Linked to §f" + terminal.channel() + (music.isWorking(terminal) ? " §a(powered)" : " §c(no power)");
         }

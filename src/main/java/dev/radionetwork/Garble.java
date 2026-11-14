@@ -3,9 +3,9 @@ package dev.radionetwork;
 import java.util.Random;
 
 /**
- * Turns radio text into static, the way a weak signal does to voice: the weaker the signal, the more letters
- * are replaced, and at the bottom some whole words drop out. Spaces and punctuation survive, so the shape of
- * the sentence is still there. Pure.
+ * What a bad signal does to radio text. {@link #dropouts} is a weak signal (words drop out and break off);
+ * {@link #apply} is encryption noise, which a scanner has to decode (letters become static symbols, spaces and
+ * punctuation survive so the shape of the sentence is still there). Pure.
  */
 public final class Garble {
 
@@ -24,6 +24,62 @@ public final class Garble {
         }
         int clamped = Math.max(1, Math.min(4, bars));
         return Math.min(1.0, max) * (4 - clamped) / 3.0;
+    }
+
+    /**
+     * A weak signal as a listener hears it: whole words drop out ("…") and some are cut off mid-word ("hel-"), the
+     * way speech breaks up, instead of turning into symbols. Runs of lost words become a single gap. Nothing is
+     * lost at {@code share} 0. Pure.
+     */
+    public static String dropouts(String text, double share, Random random) {
+        if (share <= 0 || text.isEmpty()) {
+            return text;
+        }
+        double lost = Math.min(1.0, share) * 0.8;
+        double cut = Math.min(1.0, share) * 0.4;
+        StringBuilder out = new StringBuilder(text.length());
+        StringBuilder word = new StringBuilder();
+        boolean gap = false;
+        boolean skipSpace = false;
+        for (int i = 0; i <= text.length(); i++) {
+            char c = i < text.length() ? text.charAt(i) : ' ';
+            if (i < text.length() && !Character.isWhitespace(c)) {
+                word.append(c);
+                continue;
+            }
+            if (!word.isEmpty()) {
+                String w = word.toString();
+                word.setLength(0);
+                if (random.nextDouble() < lost) {
+                    if (!gap) {
+                        out.append('…');
+                        gap = true;
+                    } else {
+                        skipSpace = true; // joins the gap before it, so its space goes too
+                    }
+                } else {
+                    gap = false;
+                    if (w.length() >= 4 && random.nextDouble() < cut) {
+                        out.append(w, 0, Math.max(2, w.length() / 2)).append('-');
+                    } else {
+                        out.append(w);
+                    }
+                }
+            }
+            if (i < text.length()) {
+                if (skipSpace) {
+                    skipSpace = false;
+                } else {
+                    out.append(c);
+                }
+            }
+        }
+        if (!Character.isWhitespace(text.charAt(text.length() - 1))) {
+            while (!out.isEmpty() && Character.isWhitespace(out.charAt(out.length() - 1))) {
+                out.setLength(out.length() - 1);
+            }
+        }
+        return out.toString();
     }
 
     /**

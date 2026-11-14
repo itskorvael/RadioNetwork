@@ -126,26 +126,26 @@ public final class Weather implements Listener {
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onWeather(WeatherChangeEvent event) {
         if (event.toWeatherState()) {
-            notifyRadioUsers(event.getWorld(), Alerts.line(Alerts.Level.YELLOW, "Storm",
-                    "Storm interference: radio signals are weaker outdoors."));
+            notifyRadioUsers(event.getWorld(), Alerts.line(Alerts.Level.YELLOW, "Weather",
+                    "Storm interference outdoors."));
         } else {
-            notifyRadioUsers(event.getWorld(), Alerts.line(Alerts.Level.CLEAR, "Storm",
-                    "Storm interference cleared. Radio signals are back to normal outdoors."));
+            notifyRadioUsers(event.getWorld(), Alerts.line(Alerts.Level.CLEAR, "Weather",
+                    "Storm interference cleared."));
         }
     }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onThunder(ThunderChangeEvent event) {
         if (event.toThunderState()) {
-            notifyRadioUsers(event.getWorld(), Alerts.line(Alerts.Level.YELLOW, "Thunderstorm",
-                    "Heavy interference outdoors. Lightning can knock a terminal offline."));
+            notifyRadioUsers(event.getWorld(), Alerts.line(Alerts.Level.YELLOW, "Weather",
+                    "Heavy interference outdoors."));
         } else {
             // A storm that ends altogether is announced by onWeather; this is for a thunderstorm easing into plain rain.
             World world = event.getWorld();
             Bukkit.getScheduler().runTask(plugin, () -> {
                 if (world.hasStorm() && !world.isThundering()) {
-                    notifyRadioUsers(world, Alerts.line(Alerts.Level.YELLOW, "Storm",
-                            "The thunderstorm has passed. Rain still weakens signals outdoors."));
+                    notifyRadioUsers(world, Alerts.line(Alerts.Level.YELLOW, "Weather",
+                            "The thunderstorm has passed. Rain continues."));
                 }
             });
         }
@@ -153,7 +153,7 @@ public final class Weather implements Listener {
 
     /** Tells the players in a world who use radios (a receiver or scanner in hand, or standing at a terminal). */
     private void notifyRadioUsers(World world, String message) {
-        if (!enabled() || !plugin.getConfig().getBoolean("weather.notices", true) || world.getEnvironment() != World.Environment.NORMAL) {
+        if (!enabled() || !plugin.getConfig().getBoolean("weather.notices", false) || world.getEnvironment() != World.Environment.NORMAL) {
             return;
         }
         for (Player player : online.get()) {
@@ -237,9 +237,9 @@ public final class Weather implements Listener {
         if (at == null) {
             return;
         }
-        String message = Alerts.line(Alerts.Level.RED, "Lightning", "The " + what + " at " + at.getBlockX() + " "
-                + at.getBlockY() + " " + at.getBlockZ() + " was struck. Its Signal Cable was destroyed and it is no longer "
-                + "linked to the terminal on " + Alerts.name(terminal.isTuned() ? terminal.channel() : "no channel") + ".");
+        String message = Alerts.line(Alerts.Level.RED, "Power", "The " + what + " at " + at.getBlockX() + " "
+                + at.getBlockY() + " " + at.getBlockZ() + " was struck and its cable destroyed. It is no longer linked to "
+                + "the terminal on " + Alerts.name(terminal.isTuned() ? terminal.channel() : "no channel") + ".");
         Location center = terminal.center();
         for (Player player : online.get()) {
             boolean involved = player.getName().equalsIgnoreCase(owner) || player.getName().equalsIgnoreCase(terminal.creatorName())
@@ -264,16 +264,15 @@ public final class Weather implements Listener {
         Location center = radio.center();
         for (Player player : audience) {
             if (center != null && manager.isAtTower(player.getLocation(), center)) {
-                Alerts.send(player, Alerts.Level.RED, "Lightning", "Your terminal on " + Alerts.name(radio.channel())
-                        + " was struck and is offline for about " + Alerts.name(seconds + " seconds") + ".");
+                Alerts.send(player, Alerts.Level.RED, "Power", "Your terminal on " + Alerts.name(radio.channel())
+                        + " was struck by lightning and went offline.");
                 if (overheated) {
                     Alerts.send(player, Alerts.Level.RED, "Jammer", "The linked Signal Jammer overheated. "
                             + "It must cool down and warm up again.");
                 }
             } else {
-                Alerts.send(player, Alerts.Level.YELLOW, "Lightning", radio.creatorName() + "'s radio on "
-                        + Alerts.name(radio.channel()) + " was struck by lightning and is offline for about "
-                        + seconds + " seconds.");
+                Alerts.send(player, Alerts.Level.YELLOW, "Power", radio.creatorName() + "'s radio on "
+                        + Alerts.name(radio.channel()) + " was struck by lightning and went offline.");
             }
         }
     }
@@ -317,15 +316,17 @@ public final class Weather implements Listener {
             return;                            // ran out of fuel or was untuned during the outage
         }
         Location center = radio.center();
-        String rejoin = "§e§l[RADIO - " + radio.channel() + "] §7" + radio.creatorName() + "'s radio has tuned in to "
-                + radio.channel() + " frequency.";
+        String rejoin = Chat.tag("§e", "Radio", radio.channel()) + "§7" + radio.creatorName() + "'s radio has tuned in.";
+        boolean roll = manager.announcesPresence(radio);
         for (Player player : audience(radio)) {
             if (center != null && manager.isAtTower(player.getLocation(), center)) {
-                Alerts.send(player, Alerts.Level.CLEAR, "Power", "Power restored. The terminal on "
+                Alerts.send(player, Alerts.Level.CLEAR, "Power", "The terminal on "
                         + Alerts.name(radio.channel()) + " is back online.");
                 player.playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_CHIME, 1f, 1.5f);
             }
-            Chat.send(player, rejoin);          // everyone listening hears it come back on the frequency
+            if (roll) {
+                Chat.send(player, rejoin);      // on an encrypted frequency, everyone hears it come back
+            }
         }
     }
 

@@ -11,6 +11,7 @@ Stationary **Radio Terminals** (Lodestones) carry text and voice over named **fr
 - Pocket Receivers (listen-only), with signal bars, depth, an Underground Antenna and an Earpiece
 - Signal Repeaters (relays), Radio Jukeboxes (vanilla discs and player songs: note-block and MP3), Signal Cables
 - Signal Jammers, Signal Scanners with the Decoder puzzle, encrypted frequencies
+- Decommissioned terminals, jukeboxes, repeaters and jammers: scenery that looks the part and does nothing. Put a working item alone in a crafting grid, or `/radio give decommissioned_terminal` (also `_jukebox`, `_repeater`, `_jammer`)
 - Weather and night effects, and lightning that knocks terminals offline and cuts cables
 - One shared alert format across the plugin
 

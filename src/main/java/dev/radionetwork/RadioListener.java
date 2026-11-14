@@ -1,5 +1,6 @@
 package dev.radionetwork;
 
+import org.bukkit.Bukkit;
 import org.bukkit.GameMode;
 import org.bukkit.Keyed;
 import org.bukkit.Location;
@@ -84,6 +85,22 @@ public final class RadioListener implements Listener {
      */
     @EventHandler
     public void onPrepareCraft(PrepareItemCraftEvent event) {
+        // Decommissioning: a working terminal, jukebox, repeater or jammer alone in the grid, and only that kind.
+        if (event.getRecipe() instanceof Keyed decommission && radioItem.decommissionRecipeKind(decommission.getKey()) != null) {
+            RadioItem.Retired wanted = radioItem.decommissionRecipeKind(decommission.getKey());
+            int stacks = 0;
+            RadioItem.Retired found = null;
+            for (ItemStack stack : event.getInventory().getMatrix()) {
+                if (stack != null && !stack.isEmpty()) {
+                    stacks++;
+                    found = radioItem.liveKind(stack);
+                }
+            }
+            if (stacks != 1 || found != wanted) {
+                event.getInventory().setResult(null);
+            }
+            return;
+        }
         boolean takesCore = event.getRecipe() instanceof Keyed keyed
                 && (keyed.getKey().equals(radioItem.receiverRecipeKey()) || keyed.getKey().equals(radioItem.earpieceRecipeKey())
                 || keyed.getKey().equals(radioItem.jukeboxRecipeKey())
@@ -94,7 +111,7 @@ public final class RadioListener implements Listener {
             if (radioItem.isRadio(stack) || radioItem.isReceiver(stack) || radioItem.isAntenna(stack)
                     || radioItem.isEarpiece(stack) || radioItem.isJukebox(stack) || radioItem.isCable(stack)
                     || radioItem.isRepeater(stack) || radioItem.isJammer(stack) || radioItem.isScanner(stack)
-                    || radioItem.isBlankDisc(stack) || radioItem.isSongDisc(stack)
+                    || radioItem.isBlankDisc(stack) || radioItem.isSongDisc(stack) || radioItem.isDecommissioned(stack)
                     || (radioItem.isCore(stack) && !takesCore)) {
                 event.getInventory().setResult(null);
                 return;
@@ -110,7 +127,6 @@ public final class RadioListener implements Listener {
             return;
         }
         manager.register(event.getBlockPlaced(), event.getPlayer().getName());
-        Chat.send(event.getPlayer(), "§aRadio Terminal placed. Right-click it with an empty hand, then tune it to a frequency.");
     }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
@@ -249,15 +265,14 @@ public final class RadioListener implements Listener {
                 if (denyUnlessOperator(player, radio)) {
                     return;
                 }
-                prompt(player, "Radio Channel", "Channel name / frequency (max "
-                        + RadioManager.MAX_CHANNEL_LENGTH + " characters, blank = untune)", radio.channel(),
+                prompt(player, "Channel", "Channel name (blank to untune)", radio.channel(),
                         RadioManager.MAX_CHANNEL_LENGTH, text -> applyChannel(player, radio, text));
             }
             case RadioGui.SLOT_RADIUS -> {
                 if (denyUnlessOperator(player, radio)) {
                     return;
                 }
-                prompt(player, "Network Transmission Distance", "Range in blocks", String.valueOf(radio.customRadius()),
+                prompt(player, "Range", "Range in blocks", String.valueOf(radio.customRadius()),
                         10, text -> applyRadius(player, radio, text));
             }
             default -> { }
@@ -267,12 +282,11 @@ public final class RadioListener implements Listener {
     private void handleFrequencyClick(Player player, RadioGui gui, Radio radio, ClickType click) {
         Frequency frequency = manager.frequencyOf(radio);
         if (frequency == null) {
-            deny(player, "§cThis radio is not tuned to a claimed frequency. Tune it first.");
+            deny(player, "§cTerminal isn't tuned.");
             return;
         }
         if (!FrequencyCommand.isOwnerOrAdmin(player, frequency)) {
-            deny(player, "§cPermission denied. Only the frequency owner (" + frequency.owner()
-                    + ") can change this setting.");
+            deny(player, "§cOnly " + frequency.owner() + " can change that.");
             return;
         }
         switch (click) {
@@ -284,14 +298,14 @@ public final class RadioListener implements Listener {
                             + " (4-32 characters)", "", 32, text -> applyPassword(player, frequency, text, true));
                 } else {
                     frequency.access(frequency.access().toggled());
-                    afterFrequencyChange(player, gui, radio, "§eFrequency §6" + frequency.name() + " §eis now §6"
-                            + frequency.access().name() + "§e.");
+                    afterFrequencyChange(player, gui, radio, "§7Access on §f" + frequency.name() + "§7: §f"
+                            + frequency.access().name().toLowerCase(java.util.Locale.ROOT) + "§7.");
                 }
             }
             case LEFT, SHIFT_LEFT -> {
                 frequency.speech(frequency.speech().toggled());
-                afterFrequencyChange(player, gui, radio, "§eFrequency §6" + frequency.name() + " §espeaking is now §6"
-                        + frequency.speech().name() + "§e.");
+                afterFrequencyChange(player, gui, radio, "§7Speaking on §f" + frequency.name() + "§7: §f"
+                        + frequency.speech().name().toLowerCase(java.util.Locale.ROOT) + "§7.");
             }
             default -> { }
         }
@@ -304,6 +318,9 @@ public final class RadioListener implements Listener {
         Chat.send(player, message);
     }
 
+    /** Who is online, for telling people their access went; the probes swap this for fake players. */
+    private java.util.function.Supplier<java.util.Collection<? extends Player>> online = Bukkit::getOnlinePlayers;
+
     private void applyPassword(Player player, Frequency frequency, String text, boolean makePrivate) {
         if (manager.frequencies().get(frequency.name()) != frequency
                 || !FrequencyCommand.isOwnerOrAdmin(player, frequency)) {
@@ -314,14 +331,33 @@ public final class RadioListener implements Listener {
             deny(player, "§cPasswords must be 4-32 characters.");
             return;
         }
+        // Who is about to lose access, and how many scanners are about to lose their progress.
+        java.util.List<Player> removed = new java.util.ArrayList<>();
+        if (frequency.access() == Frequency.Access.ENCRYPTED) {
+            for (Player other : online.get()) {
+                if (!other.equals(player) && frequency.hasAccess(other.getName()) && !frequency.isOwner(other.getName())
+                        && !frequency.isTrusted(other.getName())) {
+                    removed.add(other);
+                }
+            }
+        }
+        int scanners = manager.scanners() == null ? 0 : manager.scanners().progressOn(frequency);
         frequency.setPassword(password);
         if (makePrivate) {
             frequency.access(Frequency.Access.ENCRYPTED);
         }
         manager.save();
         player.playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_CHIME, 1f, 1.5f);
-        Chat.send(player, "§aPassword set for §f" + frequency.name() + "§a. Everyone who joined with the old password was removed."
-                + (makePrivate ? " The frequency is now §6ENCRYPTED§a." : ""));
+        Chat.send(player, "§7Password set on §f" + frequency.name() + "§7. Members who joined with the old one were removed."
+                + (makePrivate ? " It is now encrypted." : ""));
+        if (scanners > 0) {
+            Alerts.send(player, Alerts.Level.CLEAR, "Security", "Scanner progress on " + Alerts.name(frequency.name())
+                    + " was reset.");
+        }
+        for (Player target : removed) {
+            Alerts.send(target, Alerts.Level.YELLOW, "Access", "The password for " + Alerts.name(frequency.name())
+                    + " was changed. Enter the new one to rejoin.");
+        }
     }
 
     private void deny(Player player, String message) {
@@ -334,8 +370,7 @@ public final class RadioListener implements Listener {
             return false;
         }
         player.playSound(player.getLocation(), Sound.ENTITY_VILLAGER_NO, 1f, 1f);
-        Chat.send(player, "§cPermission denied. Only the station operator (" + radio.creatorName()
-                + ") can change this setting.");
+        Chat.send(player, "§cOnly " + radio.creatorName() + " can change that.");
         return true;
     }
 
@@ -362,13 +397,10 @@ public final class RadioListener implements Listener {
         Frequency frequency = manager.frequencies().get(channel);
         if (frequency == null) {
             manager.frequencies().claim(channel, player.getName());
-            Chat.send(player, "§aYou claimed the frequency §f" + channel + "§a. Use §f/radio §ato manage it.");
+            Chat.send(player, "§7Claimed §f" + channel + "§7.");
         } else if (!frequency.hasAccess(radio.creatorName())) {
             promptPassword(player, radio, frequency);
             return;
-        } else if (frequency.access() == Frequency.Access.ENCRYPTED) {
-            Chat.send(player, "§7Encrypted frequency: no password needed because " + radio.creatorName()
-                    + " is " + frequency.accessReason(radio.creatorName()) + ".");
         }
         finishTune(player, radio, channel);
     }
@@ -376,7 +408,7 @@ public final class RadioListener implements Listener {
     /** A blank channel name takes the radio off its frequency. */
     private void untune(Player player, Radio radio) {
         if (!radio.isTuned()) {
-            Chat.send(player, "§7This radio is already untuned.");
+            Chat.send(player, "§7Already untuned.");
             return;
         }
         String previous = radio.channel();
@@ -384,11 +416,11 @@ public final class RadioListener implements Listener {
         radio.channel("");
         manager.save();
         player.playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_CHIME, 1f, 0.7f);
-        Chat.send(player, "§aRadio untuned from channel §f" + previous + "§a. Enter a channel name to tune it again.");
+        Chat.send(player, "§7Untuned from §f" + previous + "§7.");
     }
 
     private void promptPassword(Player player, Radio radio, Frequency frequency) {
-        Chat.send(player, "§eFrequency §6" + frequency.name() + " §eis ENCRYPTED. Enter its password (the key) to tune in.");
+        Chat.send(player, "§f" + frequency.name() + " §7is encrypted.");
         plugin.getServer().getScheduler().runTask(plugin, () -> TextPrompt.open(plugin, player, "Encrypted Frequency",
                 "Password for " + frequency.name(), "", 32, text -> {
                     PasswordGuard guard = manager.passwordGuard();
@@ -419,12 +451,12 @@ public final class RadioListener implements Listener {
         radio.channel(channel);
         manager.save();
         player.playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_CHIME, 1f, 1.5f);
-        Chat.send(player, "§aRadio tuned to channel §f" + channel + "§a.");
+        Chat.send(player, "§7Tuned to §f" + channel + "§7.");
 
-        String notice = "§e§l[RADIO - " + channel + "] §7" + player.getName() + "'s radio has tuned in to "
-                + channel + " frequency.";
+        String notice = Chat.tag("§e", "Radio", channel) + "§7" + player.getName() + "'s radio has tuned in.";
         // A powered tower announces itself across its network; an unpowered one only to those beside it.
-        if (radio.isPowered()) {
+        // Only an encrypted frequency gets a roll call.
+        if (radio.isPowered() && manager.announcesPresence(radio)) {
             manager.listenersOf(radio).forEach(listener -> Chat.send(listener, notice));
         }
     }
@@ -447,8 +479,8 @@ public final class RadioListener implements Listener {
         radio.customRadius(applied);
         manager.save();
         player.playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_CHIME, 1f, 1.5f);
-        Chat.send(player, "§aNetwork transmission distance set to §f" + applied + " blocks"
-                + (applied < requested ? " §7(capped by " + radio.activeFuel().name() + " fuel)" : "") + "§a.");
+        Chat.send(player, "§7Range set to §f" + applied + " §7blocks"
+                + (applied < requested ? " (capped by " + radio.activeFuel().name().toLowerCase(java.util.Locale.ROOT) + ")" : "") + ".");
     }
 
     // ------------------------------------------------------------- fuel intake
@@ -472,7 +504,7 @@ public final class RadioListener implements Listener {
             FuelType type = FuelType.of(stack.getType());
             if (radio == null || type == FuelType.NONE) {
                 // Radio vanished or foreign item: hand it back rather than destroy it.
-                player.give(stack);
+                Players.give(player, stack);
             } else {
                 seconds.merge(type, type.burnSeconds() * stack.getAmount(), Long::sum);
                 best = best.best(type);
@@ -487,7 +519,7 @@ public final class RadioListener implements Listener {
         manager.addFuel(radio, best, total);
         manager.save();
         player.playSound(player.getLocation(), Sound.BLOCK_BEACON_ACTIVATE, 1f, 1.5f);
-        Chat.send(player, "§aAdded §f" + Chat.duration(total) + " §aof " + best.name() + " fuel. Total: §f"
-                + Chat.duration(radio.fuelLevel()) + "§a.");
+        Chat.send(player, "§7Added §f" + Chat.duration(total) + " §7of " + best.name().toLowerCase(java.util.Locale.ROOT)
+                + ". Fuel: §f" + Chat.duration(radio.fuelLevel()) + "§7.");
     }
 }

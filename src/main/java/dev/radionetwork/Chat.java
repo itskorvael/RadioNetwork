@@ -26,6 +26,16 @@ public final class Chat {
         audience.sendMessage(text(legacy));
     }
 
+    /** The tag in front of radio traffic: a small coloured label and the channel, nothing bold. */
+    public static String tag(String color, String label, String channel) {
+        return "§8[" + color + label + "§8 - §f" + channel + "§8] ";
+    }
+
+    /** The same tag without a channel (the scanner's own readouts). */
+    public static String tag(String color, String label) {
+        return "§8[" + color + label + "§8] ";
+    }
+
     /** Strips formatting characters and surrounding whitespace from player-written text. */
     public static String clean(String input) {
         return input.replace("§", "").replaceAll("\\p{Cntrl}", "").trim();

@@ -17,6 +17,8 @@ public final class RadioNetworkPlugin extends JavaPlugin {
     private Weather weather;
     private SongLibrary songs;
     private SongUploads songUploads;
+    private AnnouncementSigns announcementSigns;
+    private RetiredBlocks retired;
 
     @Override
     public void onEnable() {
@@ -31,9 +33,14 @@ public final class RadioNetworkPlugin extends JavaPlugin {
         portables = new PortableReceivers(this, manager, radioItem);
         manager.portables(portables);
         getServer().getPluginManager().registerEvents(new RadioListener(this, manager, radioItem), this);
+        retired = new RetiredBlocks(this, radioItem);
+        getServer().getPluginManager().registerEvents(retired, this);
         getServer().getPluginManager().registerEvents(new ReceiverListener(this, manager, radioItem, portables), this);
         getServer().getScheduler().runTaskTimer(this, portables::tick, 20L, 20L);
 
+        announcementSigns = new AnnouncementSigns(new java.io.File(getDataFolder(), "announcement-signs.yml"), getLogger());
+        announcementSigns.load();
+        manager.signs(announcementSigns);
         songs = new SongLibrary(this);
         songs.load();
         music = new MusicBoxes(this, manager, radioItem, songs);
@@ -82,6 +89,7 @@ public final class RadioNetworkPlugin extends JavaPlugin {
         getServer().getScheduler().runTaskTimer(this, () -> {
             manager.pruneMissingBlocks();
             manager.saveIfDirty();
+            announcementSigns.saveIfDirty();
         }, 600L, 600L);
         // Fuel burns with time: once a second, working radios lose fuel.
         getServer().getScheduler().runTaskTimer(this, manager::drainFuel, 20L, 20L);
@@ -134,6 +142,9 @@ public final class RadioNetworkPlugin extends JavaPlugin {
         }
         if (scanners != null) {
             scanners.save();
+        }
+        if (announcementSigns != null) {
+            announcementSigns.saveIfDirty();
         }
         if (weather != null) {
             weather.clear();

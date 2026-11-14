@@ -107,7 +107,7 @@ public final class SongUploads {
                 hand.setAmount(hand.getAmount() - 1);
                 player.getInventory().setItemInMainHand(hand.isEmpty() ? null : hand);
             }
-            player.give(items.createSongDisc(meta));
+            Players.give(player, items.createSongDisc(meta));
             player.playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_CHIME, 1f, 1.4f);
             Chat.send(player, "§aSong added: §f" + meta.name() + " §7(" + Chat.duration(meta.seconds()) + ")§a."
                     + customNote(song));
@@ -175,7 +175,7 @@ public final class SongUploads {
                 hand.setAmount(hand.getAmount() - 1);
                 player.getInventory().setItemInMainHand(hand.isEmpty() ? null : hand);
             }
-            player.give(items.createSongDisc(meta));
+            Players.give(player, items.createSongDisc(meta));
             player.playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_CHIME, 1f, 1.4f);
             Chat.send(player, "§aSong added: §f" + meta.name() + " §7(" + Chat.duration(meta.seconds()) + ", audio)§a.");
         } catch (java.io.IOException e) {

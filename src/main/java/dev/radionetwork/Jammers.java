@@ -4,6 +4,7 @@ import org.bukkit.Bukkit;
 import org.bukkit.HeightMap;
 import org.bukkit.Location;
 import org.bukkit.Material;
+import org.bukkit.Particle;
 import org.bukkit.Sound;
 import org.bukkit.SoundCategory;
 import org.bukkit.World;
@@ -26,11 +27,12 @@ import java.util.UUID;
 import java.util.logging.Level;
 
 /**
- * Signal Jammers: placed Respawn Anchors (always full, and they never explode when used) linked to a Radio
+ * Signal Jammers: placed waxed Copper Bulbs (their light shows the state) linked to a Radio
  * Terminal with Signal Cables. A running jammer jams every channel inside the radius of its terminal, and
  * again around any relay the terminal's signal passes through, a bar weaker per relay. It burns extra fuel
- * from the terminal, warms up, overheats and cools down on a timer, and when the terminal runs dry the anchor
- * counts down and blows up. Only the strongest jammer counts at any spot. Main-thread only.
+ * from the terminal, warms up, overheats and cools down on a timer, and when the terminal runs dry it smokes
+ * and sparks for a few seconds and then burns out in a small blast. Only the strongest jammer counts at any spot.
+ * Main-thread only.
  */
 public final class Jammers {
 
@@ -47,6 +49,8 @@ public final class Jammers {
         State state = State.IDLE;
         /** Seconds spent in the current state (in COUNTDOWN: seconds left). */
         int seconds;
+        /** How hard it was jamming when its power failed; the jam holds at this until the housing gives out. */
+        double heldStrength;
         double drainRemainder;
         int soundClock;
         /** Set when it reaches full strength; the radio alert goes out once its zone has been worked out. */
@@ -266,17 +270,28 @@ public final class Jammers {
         return worst;
     }
 
+    /** How hard a warming-up or jamming jammer is jamming, from 0 to 1. */
+    private double strengthOf(Jammer jammer) {
+        return switch (jammer.state) {
+            case ACTIVE -> 1.0;
+            case WARMUP -> Math.min(1.0, jammer.seconds / (double) warmupSeconds());
+            default -> 0.0;
+        };
+    }
+
     private void rebuildZones() {
         List<Zone> fresh = new ArrayList<>();
         for (Jammer jammer : jammers.values()) {
-            if (jammer.state != State.WARMUP && jammer.state != State.ACTIVE) {
+            // A jammer that lost its power keeps jamming until it blows: the signal only comes back with the bang.
+            boolean failing = jammer.state == State.COUNTDOWN;
+            if (jammer.state != State.WARMUP && jammer.state != State.ACTIVE && !failing) {
                 continue;
             }
             Radio terminal = terminalOf(jammer);
-            if (terminal == null || !terminal.isPowered()) {
+            if (terminal == null || (!failing && !terminal.isPowered())) {
                 continue;
             }
-            double strength = jammer.state == State.ACTIVE ? 1.0 : Math.min(1.0, jammer.seconds / (double) warmupSeconds());
+            double strength = failing ? jammer.heldStrength : strengthOf(jammer);
             if (strength <= 0) {
                 continue;
             }
@@ -284,7 +299,7 @@ public final class Jammers {
                     jamRadius(terminal), 0, strength));
             // The jam travels the way a signal does: every relay it reaches passes it on, a bar weaker each time.
             if (manager.isLive(terminal)) {
-                RadioManager.Reach reach = manager.reachFrom(terminal, true);
+                RadioManager.Reach reach = manager.reachFrom(terminal, true, failing);
                 int cap = manager.maxRelays();
                 for (Radio tower : reach.towers()) {
                     int used = reach.relays().get(tower);
@@ -312,11 +327,17 @@ public final class Jammers {
             if (world == null || !world.isChunkLoaded(jammer.x >> 4, jammer.z >> 4)) {
                 continue;
             }
-            if (world.getBlockAt(jammer.x, jammer.y, jammer.z).getType() != Material.RESPAWN_ANCHOR) {
+            Block block = world.getBlockAt(jammer.x, jammer.y, jammer.z);
+            if (!isJammerBlock(block.getType())) {
                 gone.add(jammer);
                 continue;
             }
+            if (block.getType() != BLOCK) {
+                // An old jammer (a Respawn Anchor), or a bulb someone scraped with an axe: back to the waxed bulb.
+                block.setType(BLOCK, false);
+            }
             step(jammer, world, players);
+            light(jammer, block);
         }
         gone.forEach(this::remove);
         rebuildZones();
@@ -328,6 +349,33 @@ public final class Jammers {
         }
         notifyListeners(players);
         showLinks();
+    }
+
+    /** What a jammer is made of: a waxed Copper Bulb, which never oxidises. Its light shows what the unit is doing. */
+    public static final Material BLOCK = Material.WAXED_COPPER_BULB;
+
+    /** Any Copper Bulb (a scraped one still counts until it is waxed again), or the Respawn Anchor older jammers were. */
+    public static boolean isJammerBlock(Material type) {
+        return type == Material.RESPAWN_ANCHOR || type.name().endsWith("COPPER_BULB");
+    }
+
+    /**
+     * The status light: dark while idle, cooling down or shut down, flickering while it warms up, steady while it
+     * jams, and flickering again when it is failing. It is set every second, so a redstone pulse cannot change it.
+     */
+    private void light(Jammer jammer, Block block) {
+        if (!(block.getBlockData() instanceof org.bukkit.block.data.Lightable bulb)) {
+            return;
+        }
+        boolean on = switch (jammer.state) {
+            case ACTIVE -> true;
+            case WARMUP, COUNTDOWN -> jammer.seconds % 2 == 0;
+            default -> false;
+        };
+        if (bulb.isLit() != on) {
+            bulb.setLit(on);
+            block.setBlockData(bulb, false);
+        }
     }
 
     private void step(Jammer jammer, World world, java.util.Collection<? extends Player> players) {
@@ -381,7 +429,8 @@ public final class Jammers {
                     return;
                 }
                 if (!powered) {
-                    endAlerts(jammer);
+                    // The jam does not lift now: the people told about it hear "cleared" when the jammer explodes.
+                    jammer.heldStrength = strengthOf(jammer);
                     jammer.state = State.COUNTDOWN;
                     jammer.seconds = countdownSeconds();
                     countdownStep(jammer, world, players);
@@ -473,32 +522,37 @@ public final class Jammers {
         float pitch = jammer.state == State.ACTIVE ? 1.0f
                 : 0.5f + 0.5f * (float) Math.min(1.0, jammer.seconds / (double) warmupSeconds());
         world.playSound(at, Sound.BLOCK_BEACON_AMBIENT, SoundCategory.BLOCKS, soundVolume(), pitch);
+        if (jammer.state == State.ACTIVE) {
+            // A faint wisp of heat off the casing while it works.
+            world.spawnParticle(Particle.SMOKE, at.clone().add(0, 0.6, 0), 2, 0.15, 0.05, 0.15, 0.005);
+        }
     }
 
     // ---------------------------------------------------------------- explosion
 
-    /** Each second of the countdown warns everyone close by; at zero the anchor blows up. */
+    /**
+     * Each second of the countdown the jammer gives itself away in the world, not in chat: smoke and sparks that
+     * thicken, a crackle, and a whine that climbs in pitch. At zero it burns out.
+     */
     private void countdownStep(Jammer jammer, World world, java.util.Collection<? extends Player> players) {
         if (jammer.seconds <= 0) {
-            explode(jammer, world);
+            burnOut(jammer, world);
             return;
         }
         Location at = jammer.center();
         if (at != null) {
-            double radius = plugin.getConfig().getDouble("jammer.warning-radius", 12.0);
-            String line = Alerts.line(Alerts.Level.RED, "Jammer overload", "Power supply lost. Housing failure in "
-                    + Alerts.name(jammer.seconds) + " second" + (jammer.seconds == 1 ? "" : "s") + ". Stay clear.");
-            for (Player player : players) {
-                if (player.getWorld().equals(world) && player.getLocation().distanceSquared(at) <= radius * radius) {
-                    Chat.send(player, line);
-                    player.playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_PLING, 1f, 0.6f + 0.1f * (10 - Math.min(10, jammer.seconds)));
-                }
-            }
+            int total = countdownSeconds();
+            double progress = 1.0 - Math.min(total, jammer.seconds) / (double) total; // 0 at the start, 1 just before the end
+            world.spawnParticle(Particle.LARGE_SMOKE, at, 3 + (int) (10 * progress), 0.3, 0.3, 0.3, 0.02);
+            world.spawnParticle(Particle.ELECTRIC_SPARK, at, 5 + (int) (20 * progress), 0.4, 0.4, 0.4, 0.2);
+            world.playSound(at, Sound.BLOCK_CAMPFIRE_CRACKLE, SoundCategory.BLOCKS, 2.0f, 0.9f + 0.4f * (float) progress);
+            world.playSound(at, Sound.BLOCK_BEACON_AMBIENT, SoundCategory.BLOCKS, 2.5f, 1.0f + (float) progress);
         }
         jammer.seconds--;
     }
 
-    private void explode(Jammer jammer, World world) {
+    /** The unit gives out: a flash of smoke and sparks and a small blast that destroys the jammer. */
+    private void burnOut(Jammer jammer, World world) {
         Location at = jammer.center();
         remove(jammer);
         if (at == null) {
@@ -507,12 +561,14 @@ public final class Jammers {
         world.getBlockAt(jammer.x, jammer.y, jammer.z).setType(Material.AIR, false);
         Player owner = Bukkit.getPlayerExact(jammer.owner);
         if (owner != null) {
-            Alerts.send(owner, Alerts.Level.RED, "Jammer overload", "Your Signal Jammer at " + jammer.x + " " + jammer.y + " "
-                    + jammer.z + " failed catastrophically: its terminal ran out of fuel.");
+            Alerts.send(owner, Alerts.Level.RED, "Jammer", "Your Signal Jammer at " + jammer.x + " " + jammer.y + " "
+                    + jammer.z + " burned out: its terminal ran out of fuel.");
         }
-        world.createExplosion(at, (float) plugin.getConfig().getDouble("jammer.explosion-power", 5.0),
+        world.spawnParticle(Particle.LARGE_SMOKE, at, 40, 0.5, 0.5, 0.5, 0.05);
+        world.spawnParticle(Particle.ELECTRIC_SPARK, at, 60, 0.6, 0.6, 0.6, 0.4);
+        world.createExplosion(at, (float) plugin.getConfig().getDouble("jammer.explosion-power", 2.0),
                 plugin.getConfig().getBoolean("jammer.explosion-fire", false),
-                plugin.getConfig().getBoolean("jammer.explosion-breaks-blocks", true));
+                plugin.getConfig().getBoolean("jammer.explosion-breaks-blocks", false));
     }
 
     // ------------------------------------------------------------ open sky rule
@@ -579,10 +635,14 @@ public final class Jammers {
                 lastAlert.put(channel, now);
             }
         }
+        // jammer.channel-alerts: false leaves a jam to be noticed by the static and the lost bars alone.
+        if (!plugin.getConfig().getBoolean("jammer.channel-alerts", true)) {
+            return;
+        }
         candidates.forEach((player, heard) -> {
             for (String channel : heard) {
                 if (allowed.contains(channel)) {
-                    Alerts.send(player, Alerts.Level.YELLOW, "Interference", "Interference detected on " + Alerts.name(channel)
+                    Alerts.send(player, Alerts.Level.YELLOW, "Signal", "Interference detected on " + Alerts.name(channel)
                             + ". Signal degraded.");
                     jammedTold.computeIfAbsent(player.getUniqueId(), k -> new java.util.HashSet<>()).add(channel);
                     jammer.told.computeIfAbsent(player, k -> new java.util.TreeSet<>()).add(channel);
@@ -613,7 +673,7 @@ public final class Jammers {
         jammer.told.forEach((player, channels) -> {
             if (player.isOnline()) {
                 for (String channel : channels) {
-                    Alerts.send(player, Alerts.Level.CLEAR, "Interference", "Interference cleared. Signal restored on "
+                    Alerts.send(player, Alerts.Level.CLEAR, "Signal", "Interference cleared. Signal restored on "
                             + Alerts.name(channel) + ".");
                 }
             }
@@ -681,9 +741,8 @@ public final class Jammers {
 
     private static String noticeLine(String channel, int bars) {
         return bars <= 0
-                ? Alerts.line(Alerts.Level.RED, "Jammed", "No signal on " + Alerts.name(channel) + ".")
-                : Alerts.line(Alerts.Level.YELLOW, "Interference", "Heavy interference here. Signal on "
-                        + Alerts.name(channel) + " is " + bars + "/4.");
+                ? Alerts.line(Alerts.Level.RED, "Signal", "No signal on " + Alerts.name(channel) + ".")
+                : Alerts.line(Alerts.Level.YELLOW, "Signal", "Signal on " + Alerts.name(channel) + " is " + bars + "/4.");
     }
 
     private void showLinks() {
@@ -717,13 +776,13 @@ public final class Jammers {
             case IDLE -> "§7linked to the terminal at " + where + "§7. Waiting for it to have power.";
             case WARMUP -> "§ewarming up §7(" + (100 * jammer.seconds / warmupSeconds()) + "%) - jamming "
                     + jamRadius(terminal) + " blocks around the terminal at " + where + "§7, getting stronger.";
-            case ACTIVE -> "§cJAMMING §7every channel within " + jamRadius(terminal) + " blocks of the terminal at "
+            case ACTIVE -> "§cjamming §7every channel within " + jamRadius(terminal) + " blocks of the terminal at "
                     + where + "§7. Overheats in " + Chat.duration(Math.max(0, overheatSeconds() - jammer.seconds)) + ".";
             case COOLDOWN -> "§bcooling down §7(" + Chat.duration(Math.max(0, cooldownSeconds() - jammer.seconds))
                     + " left), then it warms up again.";
             case BLOCKED -> "§8shut down §7- buried under blocks. It needs open sky (at most "
                     + plugin.getConfig().getInt("jammer.max-cover", 4) + " blocks of cover). Uncover it and it warms up again.";
-            case COUNTDOWN -> "§4OVERLOAD §7- the terminal at " + where + "§7 ran out of fuel. Exploding in " + jammer.seconds + "s!";
+            case COUNTDOWN -> "§4failing §7- the terminal at " + where + "§7 ran out of fuel. It burns out in " + jammer.seconds + "s.";
         };
     }
 

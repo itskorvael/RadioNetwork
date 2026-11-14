@@ -19,10 +19,26 @@ repositories {
 val mcVersion = (findProperty("mcVersion") as String?) ?: "26.2"
 val paperApi = (findProperty("paperApi") as String?) ?: "26.2.build.134-stable"
 val pluginApiVersion = (findProperty("apiVersion") as String?) ?: "26.2"
+// The dialog screens (Paper 1.21.6+) are built apart, against a Paper that has them, so the rest of the plugin can be
+// built against the oldest Paper it supports. For 26.x builds both are the same API.
+val dialogApi = (findProperty("dialogApi") as String?) ?: paperApi
+// Java level to compile for: 25 for Paper 26.x; use -PjavaRelease=21 for Paper 1.21.x
+val javaRelease = ((findProperty("javaRelease") as String?) ?: "25").toInt()
+
+sourceSets {
+    // DialogPrompt: needs Paper's dialog API, which Paper before 1.21.6 does not have. Loaded only when it exists.
+    create("dialog") {
+        java.srcDir("src/dialog/java")
+        compileClasspath += sourceSets.main.get().output
+    }
+}
 
 dependencies {
-    // Paper 26.x (year-based versioning). Runtime requires Java 25.
+    // Paper 26.x (year-based versioning) needs Java 25; Paper 1.21.x needs Java 21.
     compileOnly("io.papermc.paper:paper-api:$paperApi")
+    // the dialog classes build against their own (newer) Paper API, not the one the main classes use
+    add("dialogCompileOnly", "io.papermc.paper:paper-api:$dialogApi")
+    add("dialogCompileOnly", "de.maxhenkel.voicechat:voicechat-api:2.6.0")
 
     // Simple Voice Chat API (soft dependency; the plugin runs text-only without the mod/plugin).
     compileOnly("de.maxhenkel.voicechat:voicechat-api:2.6.0")
@@ -39,7 +55,7 @@ java {
 
 tasks.withType<JavaCompile>().configureEach {
     options.encoding = "UTF-8"
-    options.release.set(25)
+    options.release.set(javaRelease)
 }
 
 tasks.processResources {
@@ -50,8 +66,13 @@ tasks.processResources {
     }
 }
 
+tasks.named("compileDialogJava") {
+    dependsOn(tasks.named("compileJava"))
+}
+
 tasks.jar {
     archiveBaseName.set("RadioNetwork")
+    from(sourceSets["dialog"].output)
     archiveClassifier.set("mc$mcVersion")
     // Bundle the runtime libraries (JLayer) into the plugin jar.
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE

@@ -31,7 +31,7 @@ public final class BroadcastCommand implements CommandExecutor {
         RadioManager.Transmitter tx = manager.findTransmitter(player);
         switch (tx.denial()) {
             case NO_RADIO -> {
-                Chat.send(player, "§cYou must be standing within 5 blocks of a Radio Terminal to broadcast!");
+                Chat.send(player, "§cNo radio terminal within 5 blocks.");
                 return true;
             }
             case NOT_TUNED -> {
@@ -43,11 +43,11 @@ public final class BroadcastCommand implements CommandExecutor {
                 return true;
             }
             case ENCRYPTED -> {
-                Chat.send(player, "§cTransmission blocked. This frequency is ENCRYPTED and you do not have its key.");
+                Chat.send(player, "§cTransmission blocked. This frequency is encrypted and you do not have the key.");
                 return true;
             }
             case CLOSED -> {
-                Chat.send(player, "§cTransmission blocked. This frequency channel is CLOSED and locked to the frequency owner and trusted players.");
+                Chat.send(player, "§cTransmission blocked. Only the frequency owner and trusted players can speak here.");
                 return true;
             }
             case NO_POWER -> {
@@ -70,7 +70,7 @@ public final class BroadcastCommand implements CommandExecutor {
 
         long wait = manager.broadcastCooldownLeft(player.getUniqueId());
         if (wait > 0) {
-            Chat.send(player, "§cSlow down! You can broadcast again in " + String.format("%.1f", wait / 1000.0) + "s.");
+            Chat.send(player, "§cChannel busy. Try again in " + String.format("%.1f", wait / 1000.0) + "s.");
             return true;
         }
         manager.markBroadcast(player.getUniqueId());
@@ -80,7 +80,7 @@ public final class BroadcastCommand implements CommandExecutor {
         java.util.Set<Player> listeners = manager.listenersOf(radio);
         for (Player listener : listeners) {
             String heard = manager.garble(message, signal.getOrDefault(listener.getUniqueId(), 4));
-            Chat.send(listener, "§6§l[RADIO - " + radio.channel() + "] §7" + player.getName() + ": §f" + heard);
+            Chat.send(listener, Chat.tag("§6", "Radio", radio.channel()) + "§7" + player.getName() + ": §f" + heard);
         }
         // Scanners hear it too: clear on an open frequency, noise on an encrypted one they have not decoded.
         if (manager.scanners() != null) {

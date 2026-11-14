@@ -38,6 +38,19 @@ import java.util.logging.Level;
  */
 public final class RadioItem {
 
+    /** What a Signal Cable is made of: a Copper Chain, or a plain Chain on Minecraft versions before 1.21.9, which have none. */
+    private static final Material CABLE_MATERIAL = firstMaterial("COPPER_CHAIN", "CHAIN", "IRON_CHAIN");
+
+    private static Material firstMaterial(String... names) {
+        for (String name : names) {
+            Material material = Material.matchMaterial(name);
+            if (material != null) {
+                return material;
+            }
+        }
+        throw new IllegalStateException("None of these materials exist on this server: " + String.join(", ", names));
+    }
+
     /** Token for the Receiver Core in the receiver recipe's ingredient list. */
     public static final String CORE_TOKEN = "RADIO_CORE";
 
@@ -73,9 +86,56 @@ public final class RadioItem {
     private final NamespacedKey terminalRecipe;
     private final NamespacedKey coreRecipe;
     private final NamespacedKey receiverRecipe;
+    private final NamespacedKey decommissionedTag;
+
+    /**
+     * The things that can be decommissioned: the same block, switched off for good. A decommissioned item looks
+     * like the real one without the glint, carries no radio tag and never registers, so it is pure scenery.
+     */
+    public enum Retired {
+        TERMINAL("terminal", Material.LODESTONE, "Radio Terminal"),
+        JUKEBOX("jukebox", Material.JUKEBOX, "Radio Jukebox"),
+        REPEATER("repeater", Material.LIGHTNING_ROD, "Signal Repeater"),
+        JAMMER("jammer", Jammers.BLOCK, "Signal Jammer");
+
+        private final String id;
+        private final Material block;
+        private final String title;
+
+        Retired(String id, Material block, String title) {
+            this.id = id;
+            this.block = block;
+            this.title = title;
+        }
+
+        /** The name used in {@code /radio give decommissioned_<id>}. */
+        public String id() {
+            return id;
+        }
+
+        /** The block (and item) material. */
+        public Material block() {
+            return block;
+        }
+
+        public String title() {
+            return title;
+        }
+
+        /** Which kind a block or item of this material would be, or null. */
+        public static @Nullable Retired of(Material material) {
+            for (Retired kind : values()) {
+                if (kind.block == material) {
+                    return kind;
+                }
+            }
+            return null;
+        }
+    }
 
     public RadioItem(RadioNetworkPlugin plugin) {
         this.plugin = plugin;
+        this.decommissionedTag = new NamespacedKey(plugin, "decommissioned");
         this.terminalTag = new NamespacedKey(plugin, "radio_terminal");
         this.coreTag = new NamespacedKey(plugin, "receiver_core");
         this.receiverTag = new NamespacedKey(plugin, "pocket_receiver");
@@ -139,8 +199,72 @@ public final class RadioItem {
     }
 
     public List<NamespacedKey> recipeKeys() {
-        return List.of(terminalRecipe, coreRecipe, receiverRecipe, antennaRecipe, earpieceRecipe, jukeboxRecipe, cableRecipe,
-                repeaterRecipe, jammerRecipe, scannerRecipe, blankDiscRecipe);
+        List<NamespacedKey> keys = new java.util.ArrayList<>(List.of(terminalRecipe, coreRecipe, receiverRecipe, antennaRecipe,
+                earpieceRecipe, jukeboxRecipe, cableRecipe, repeaterRecipe, jammerRecipe, scannerRecipe, blankDiscRecipe));
+        keys.addAll(decommissionRecipeKeys());
+        return keys;
+    }
+
+    // ---------------------------------------------------------- decommissioned
+
+    /** A decommissioned copy of a terminal, jukebox, repeater or jammer: scenery that does nothing. */
+    public ItemStack createDecommissioned(Retired kind) {
+        ItemStack item = new ItemStack(kind.block());
+        ItemMeta meta = item.getItemMeta();
+        meta.displayName(Chat.item("§7Decommissioned " + kind.title()));
+        meta.lore(List.of(Chat.item("§7Out of service. Display only.")));
+        meta.getPersistentDataContainer().set(decommissionedTag, PersistentDataType.BYTE, (byte) 1);
+        item.setItemMeta(meta);
+        return item;
+    }
+
+    /** The kind of a decommissioned item, or null for anything else. */
+    public @Nullable Retired decommissionedKind(@Nullable ItemStack item) {
+        return item == null || item.isEmpty() || !has(item, decommissionedTag) ? null : Retired.of(item.getType());
+    }
+
+    public boolean isDecommissioned(@Nullable ItemStack item) {
+        return decommissionedKind(item) != null;
+    }
+
+    /** The kind of a working terminal, jukebox, repeater or jammer item (the ones that can be decommissioned), or null. */
+    public @Nullable Retired liveKind(@Nullable ItemStack item) {
+        if (isRadio(item)) {
+            return Retired.TERMINAL;
+        }
+        if (isJukebox(item)) {
+            return Retired.JUKEBOX;
+        }
+        if (isRepeater(item)) {
+            return Retired.REPEATER;
+        }
+        // An older jammer item (a Respawn Anchor) is left out: it only works once placed.
+        return isJammer(item) && item.getType() == Jammers.BLOCK ? Retired.JAMMER : null;
+    }
+
+    public NamespacedKey decommissionRecipeKey(Retired kind) {
+        return new NamespacedKey(plugin, "decommissioned_" + kind.id());
+    }
+
+    public List<NamespacedKey> decommissionRecipeKeys() {
+        return java.util.Arrays.stream(Retired.values()).map(this::decommissionRecipeKey).toList();
+    }
+
+    /** The kind a decommission recipe makes, or null when the key is not one of them. */
+    public @Nullable Retired decommissionRecipeKind(NamespacedKey key) {
+        for (Retired kind : Retired.values()) {
+            if (decommissionRecipeKey(kind).equals(key)) {
+                return kind;
+            }
+        }
+        return null;
+    }
+
+    /** Shapeless, one ingredient: put a working item alone in a crafting grid to retire it for good. */
+    private ShapelessRecipe decommissionRecipe(Retired kind) {
+        ShapelessRecipe recipe = new ShapelessRecipe(decommissionRecipeKey(kind), createDecommissioned(kind));
+        recipe.addIngredient(kind.block());
+        return recipe;
     }
 
     // ------------------------------------------------------------------- items
@@ -150,8 +274,7 @@ public final class RadioItem {
         ItemMeta meta = item.getItemMeta();
         meta.displayName(Chat.item("§6Radio Terminal"));
         meta.lore(List.of(
-                Chat.item("§7Place it, then right-click with an empty"),
-                Chat.item("§7hand to tune and fuel your radio.")));
+                Chat.item("§7Transmits and receives on a frequency.")));
         meta.setEnchantmentGlintOverride(true);
         meta.getPersistentDataContainer().set(terminalTag, PersistentDataType.BYTE, (byte) 1);
         item.setItemMeta(meta);
@@ -163,8 +286,7 @@ public final class RadioItem {
         ItemMeta meta = item.getItemMeta();
         meta.displayName(Chat.item("§6Receiver Core"));
         meta.lore(List.of(
-                Chat.item("§7A tuned circuit. Combine it with a Compass"),
-                Chat.item("§7and a Lightning Rod to build a Pocket Receiver.")));
+                Chat.item("§7A tuned circuit for radio equipment.")));
         meta.setEnchantmentGlintOverride(true);
         meta.getPersistentDataContainer().set(coreTag, PersistentDataType.BYTE, (byte) 1);
         item.setItemMeta(meta);
@@ -187,8 +309,7 @@ public final class RadioItem {
         ItemMeta meta = item.getItemMeta();
         meta.displayName(Chat.item("§6Underground Antenna"));
         meta.lore(List.of(
-                Chat.item("§7Fits the Chassis slot of a Pocket Receiver."),
-                Chat.item("§7Lets it hear through rock, at reduced range.")));
+                Chat.item("§7Pocket Receiver part. Hears through rock.")));
         meta.setEnchantmentGlintOverride(true);
         meta.getPersistentDataContainer().set(antennaTag, PersistentDataType.BYTE, (byte) 1);
         item.setItemMeta(meta);
@@ -200,9 +321,7 @@ public final class RadioItem {
         ItemMeta meta = item.getItemMeta();
         meta.displayName(Chat.item("§6Radio Jukebox"));
         meta.lore(List.of(
-                Chat.item("§7Place it, then link it to a Radio Terminal"),
-                Chat.item("§7with Signal Cables. Right-click it with a disc"),
-                Chat.item("§7to play music over that terminal's channel.")));
+                Chat.item("§7Plays discs over a linked terminal's channel.")));
         meta.setEnchantmentGlintOverride(true);
         meta.getPersistentDataContainer().set(jukeboxTag, PersistentDataType.BYTE, (byte) 1);
         item.setItemMeta(meta);
@@ -218,9 +337,7 @@ public final class RadioItem {
         ItemMeta meta = item.getItemMeta();
         meta.displayName(Chat.item("§6Blank Disc"));
         meta.lore(List.of(
-                Chat.item("§7Hold it and open a Radio Jukebox menu,"),
-                Chat.item("§7then choose Add song to record a note-block"),
-                Chat.item("§7song onto it from a link.")));
+                Chat.item("§7Records a song from a link.")));
         meta.setEnchantmentGlintOverride(true);
         meta.getPersistentDataContainer().set(blankDiscTag, PersistentDataType.BYTE, (byte) 1);
         item.setItemMeta(meta);
@@ -235,11 +352,10 @@ public final class RadioItem {
     public ItemStack createSongDisc(SongLibrary.Meta song) {
         ItemStack item = new ItemStack(Material.MUSIC_DISC_5);
         ItemMeta meta = item.getItemMeta();
-        meta.displayName(Chat.item("§d♪ " + song.name()));
+        meta.displayName(Chat.item("§d" + song.name()));
         meta.lore(List.of(
                 Chat.item("§7Added by " + song.uploader()),
-                Chat.item("§7Length: " + Chat.duration(song.seconds()) + (song.isAudio() ? " §8(audio)" : " §8(note blocks)")),
-                Chat.item("§8Play it in a Radio Jukebox.")));
+                Chat.item("§7Length: " + Chat.duration(song.seconds()) + (song.isAudio() ? " §8(audio)" : " §8(note blocks)"))));
         meta.setEnchantmentGlintOverride(true);
         meta.getPersistentDataContainer().set(songDiscTag, PersistentDataType.BYTE, (byte) 1);
         meta.getPersistentDataContainer().set(songIdTag, PersistentDataType.STRING, song.id());
@@ -260,14 +376,12 @@ public final class RadioItem {
     }
 
     public ItemStack createCable(int amount) {
-        ItemStack item = new ItemStack(Material.COPPER_CHAIN, amount);
+        ItemStack item = new ItemStack(CABLE_MATERIAL, amount);
         ItemMeta meta = item.getItemMeta();
         meta.displayName(Chat.item("§6Signal Cable"));
         meta.lore(List.of(
-                Chat.item("§7Right-click a Radio Terminal, then a Radio"),
-                Chat.item("§7Jukebox, Signal Repeater or Signal Jammer, to link them."),
-                Chat.item("§7One cable per " + plugin.getConfig().getInt("music.blocks-per-cable", 4) + " blocks of distance."),
-                Chat.item("§8Cannot be placed.")));
+                Chat.item("§7Links a terminal to a jukebox, repeater or jammer."),
+                Chat.item("§8One cable per " + plugin.getConfig().getInt("music.blocks-per-cable", 4) + " blocks of distance.")));
         meta.setEnchantmentGlintOverride(true);
         meta.getPersistentDataContainer().set(cableTag, PersistentDataType.BYTE, (byte) 1);
         item.setItemMeta(meta);
@@ -275,7 +389,7 @@ public final class RadioItem {
     }
 
     public boolean isCable(@Nullable ItemStack item) {
-        return item != null && !item.isEmpty() && item.getType() == Material.COPPER_CHAIN && has(item, cableTag);
+        return item != null && !item.isEmpty() && item.getType() == CABLE_MATERIAL && has(item, cableTag);
     }
 
     public ItemStack createRepeater() {
@@ -283,9 +397,7 @@ public final class RadioItem {
         ItemMeta meta = item.getItemMeta();
         meta.displayName(Chat.item("§6Signal Repeater"));
         meta.lore(List.of(
-                Chat.item("§7Place it, then link it to a Radio Terminal"),
-                Chat.item("§7with Signal Cables. That terminal will then"),
-                Chat.item("§7pass on every signal it hears on its channel.")));
+                Chat.item("§7Passes on every signal its linked terminal hears.")));
         meta.setEnchantmentGlintOverride(true);
         meta.getPersistentDataContainer().set(repeaterTag, PersistentDataType.BYTE, (byte) 1);
         item.setItemMeta(meta);
@@ -296,16 +408,14 @@ public final class RadioItem {
         return item != null && !item.isEmpty() && item.getType() == Material.LIGHTNING_ROD && has(item, repeaterTag);
     }
 
-    /** A Respawn Anchor that is always full and never explodes when used; see {@link JammerListener}. */
+    /** A waxed Copper Bulb whose light shows what the jammer is doing; see {@link JammerListener}. */
     public ItemStack createJammer() {
-        ItemStack item = new ItemStack(Material.RESPAWN_ANCHOR);
+        ItemStack item = new ItemStack(Jammers.BLOCK);
         ItemMeta meta = item.getItemMeta();
-        meta.displayName(Chat.item("§c§lSignal Jammer"));
+        meta.displayName(Chat.item("§cSignal Jammer"));
         meta.lore(List.of(
-                Chat.item("§7Place it, then link it to a Radio Terminal"),
-                Chat.item("§7with Signal Cables. It jams every channel"),
-                Chat.item("§7around that terminal and burns its fuel."),
-                Chat.item("§cIf the terminal runs dry, the unit fails catastrophically.")));
+                Chat.item("§7Jams every channel around its linked terminal."),
+                Chat.item("§cBurns out in a blast if the terminal runs dry.")));
         meta.setEnchantmentGlintOverride(true);
         meta.getPersistentDataContainer().set(jammerTag, PersistentDataType.BYTE, (byte) 1);
         item.setItemMeta(meta);
@@ -313,7 +423,8 @@ public final class RadioItem {
     }
 
     public boolean isJammer(@Nullable ItemStack item) {
-        return item != null && !item.isEmpty() && item.getType() == Material.RESPAWN_ANCHOR && has(item, jammerTag);
+        // Also the Respawn Anchor older jammer items were; placing one turns it into the bulb.
+        return item != null && !item.isEmpty() && Jammers.isJammerBlock(item.getType()) && has(item, jammerTag);
     }
 
     /** How many Signal Cables the player carries (inventory and off hand). */
@@ -361,9 +472,7 @@ public final class RadioItem {
         ItemMeta meta = item.getItemMeta();
         meta.displayName(Chat.item("§6Earpiece"));
         meta.lore(List.of(
-                Chat.item("§7Fits the Chassis slot of a Pocket Receiver."),
-                Chat.item("§7Only you hear it. Without one, the receiver"),
-                Chat.item("§7plays on a speaker for anyone nearby.")));
+                Chat.item("§7Pocket Receiver part. Only you hear the audio.")));
         meta.setEnchantmentGlintOverride(true);
         meta.getPersistentDataContainer().set(earpieceTag, PersistentDataType.BYTE, (byte) 1);
         item.setItemMeta(meta);
@@ -523,9 +632,7 @@ public final class RadioItem {
                         ? "§f" + (antenna ? "Underground Antenna" : "") + (antenna && earpiece ? ", " : "") + (earpiece ? "Earpiece" : "")
                         : "§8empty")),
                 Chat.item("§7Auto-scan: " + (autoScan ? "§aon" : "§8off")),
-                Chat.item("§7Listen only. Right-click to scan or tune."),
-                Chat.item("§7Hold it in your hand to listen."),
-                Chat.item("§8Rock above you weakens the signal.")));
+                Chat.item("§8Listen only.")));
     }
 
 
@@ -587,11 +694,8 @@ public final class RadioItem {
         meta.displayName(Chat.item("§5Signal Scanner"));
         meta.lore(List.of(
                 Chat.item("§7Tuned to: " + (channel == null || channel.isEmpty() ? "§8off" : "§f" + channel)),
-                Chat.item("§7Listen only. Hold it to listen, right-click to tune."),
-                Chat.item("§7Hears encrypted frequencies as noise. Right-click"),
-                Chat.item("§7one to break its code in the Decoder."),
-                Chat.item("§8Sneak + right-click to change frequency."),
-                Chat.item("§8Weak signal and jamming slow the guesses.")));
+                Chat.item("§7Hears encrypted frequencies as noise."),
+                Chat.item("§8Listen only.")));
     }
 
     // ----------------------------------------------------------------- recipes
@@ -610,6 +714,9 @@ public final class RadioItem {
         register(jammerRecipe(), "jammer");
         register(scannerRecipe(), "scanner");
         register(blankDiscRecipe(), "blank disc");
+        for (Retired kind : Retired.values()) {
+            register(decommissionRecipe(kind), "decommissioned " + kind.id());
+        }
         Bukkit.getOnlinePlayers().forEach(p -> recipeKeys().forEach(p::discoverRecipe));
     }
 

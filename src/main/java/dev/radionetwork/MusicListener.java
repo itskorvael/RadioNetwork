@@ -59,7 +59,6 @@ public final class MusicListener implements Listener {
     public void onPlaceJukebox(BlockPlaceEvent event) {
         if (event.getBlockPlaced().getType() == Material.JUKEBOX && items.isJukebox(event.getItemInHand())) {
             music.register(event.getBlockPlaced(), event.getPlayer().getName());
-            Chat.send(event.getPlayer(), "§aRadio Jukebox placed. Link it to a Radio Terminal with Signal Cables.");
         }
     }
 
@@ -190,44 +189,42 @@ public final class MusicListener implements Listener {
 
     private void selectTerminal(Player player, Radio terminal) {
         if (!RadioManager.isOperator(player, terminal)) {
-            deny(player, "§cOnly the terminal's operator (" + terminal.creatorName() + ") can link jukeboxes to it.");
+            deny(player, "§cOnly " + terminal.creatorName() + " can link to that terminal.");
             return;
         }
         music.select(player, terminal);
         player.playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_HAT, 1f, 1.4f);
-        Chat.send(player, "§aTerminal selected" + (terminal.isTuned() ? " (" + terminal.channel() + ")" : "")
-                + "§a. Now right-click a Radio Jukebox, Signal Repeater or Signal Jammer with the cable.");
+        player.sendActionBar(Chat.text("§7Cable: terminal" + (terminal.isTuned() ? " on §f" + terminal.channel() : "") + "§7."));
     }
 
     private void linkBox(Player player, MusicBoxes.Box box) {
         String key = music.selected(player);
         Radio terminal = key == null ? null : manager.get(key);
         if (terminal == null) {
-            deny(player, "§cRight-click a Radio Terminal with the cable first, then the jukebox.");
+            deny(player, "§cNo terminal selected.");
             return;
         }
         if (!RadioManager.isOperator(player, terminal)) {
-            deny(player, "§cOnly the terminal's operator can link jukeboxes to it.");
+            deny(player, "§cOnly the operator can link to that terminal.");
             return;
         }
         Location from = box.center();
         Location to = terminal.center();
         if (from == null || to == null || !from.getWorld().equals(to.getWorld())) {
-            deny(player, "§cThe jukebox and the terminal must be in the same world.");
+            deny(player, "§cNot in the same world.");
             return;
         }
         int perCable = Math.max(1, plugin.getConfig().getInt("music.blocks-per-cable", 4));
         int maxLength = plugin.getConfig().getInt("music.max-link-length", 16);
         double distance = from.distance(to);
         if (distance > maxLength) {
-            deny(player, "§cToo far: " + (int) Math.ceil(distance) + " blocks apart, and a link can be at most " + maxLength + ".");
+            deny(player, "§cToo far. Cables reach " + maxLength + " blocks.");
             return;
         }
         int needed = (int) Math.ceil(distance / perCable);
         boolean free = player.getGameMode() == GameMode.CREATIVE;
         if (!free && items.countCables(player) < needed) {
-            deny(player, "§cYou need " + needed + " Signal Cable" + (needed == 1 ? "" : "s") + " for " + (int) Math.ceil(distance)
-                    + " blocks (1 per " + perCable + "), and you have " + items.countCables(player) + ".");
+            deny(player, "§cNeeds " + needed + " cable" + (needed == 1 ? "" : "s") + ", you have " + items.countCables(player) + ".");
             return;
         }
         if (!free) {
@@ -237,8 +234,7 @@ public final class MusicListener implements Listener {
         music.clearSelection(player);
         player.playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_CHIME, 1f, 1.6f);
         music.flashLine(player, from, to);
-        Chat.send(player, "§aJukebox linked to the terminal" + (terminal.isTuned() ? " on §f" + terminal.channel() : "")
-                + "§a. Used " + (free ? 0 : needed) + " cable" + (needed == 1 ? "" : "s") + ".");
+        Chat.send(player, terminal.isTuned() ? "§7Linked to §f" + terminal.channel() + "§7." : "§7Linked.");
     }
 
     // ------------------------------------------------------------------- discs
@@ -246,11 +242,11 @@ public final class MusicListener implements Listener {
     private void insertDisc(Player player, MusicBoxes.Box box, ItemStack disc) {
         Radio terminal = music.terminalOf(box);
         if (terminal == null) {
-            deny(player, "§cThis jukebox is not linked to a Radio Terminal. Use Signal Cables.");
+            deny(player, "§cJukebox isn't linked to a terminal.");
             return;
         }
         if (!music.canPlayOn(player, terminal)) {
-            deny(player, "§cOnly people who can speak on this channel can play music on it.");
+            deny(player, "§cNot allowed to play music on this channel.");
             return;
         }
         Track track;
@@ -265,7 +261,7 @@ public final class MusicListener implements Listener {
             track = Track.vanilla(disc.getType());
         }
         if (box.queue().size() >= music.capacity()) {
-            deny(player, "§cThe queue is full (" + music.capacity() + " discs). Right-click with an empty hand to manage it.");
+            deny(player, "§cThe queue is full (" + music.capacity() + " discs).");
             return;
         }
         boolean wouldStart = box.queue().isEmpty() || box.finished();
@@ -347,15 +343,15 @@ public final class MusicListener implements Listener {
                     deny(player, "§cThe queue is already empty.");
                     return;
                 }
-                all.forEach(track -> player.give(music.itemFor(track)));
-                Chat.send(player, "§7Took out " + all.size() + " disc" + (all.size() == 1 ? "" : "s") + ". The music stops.");
+                all.forEach(track -> Players.give(player, music.itemFor(track)));
+                Chat.send(player, "§7Took out " + all.size() + " disc" + (all.size() == 1 ? "" : "s") + ".");
             }
             default -> {
                 Track taken = music.removeDisc(box, slot);
                 if (taken == null) {
                     return;
                 }
-                player.give(music.itemFor(taken));
+                Players.give(player, music.itemFor(taken));
                 Chat.send(player, "§7Took out " + music.name(taken) + ".");
             }
         }

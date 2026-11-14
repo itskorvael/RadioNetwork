@@ -33,7 +33,7 @@ import java.util.logging.Level;
  * cleared takes a share of the noise away. The scanner needs a signal while it works, and a weak one slows it down.
  * Decoding belongs to one scanner and one password: when the owner changes the password, every scanner starts again.
  * <p>
- * The frequency's people are warned without any names: a yellow alert once when someone starts scanning, and a red
+ * The frequency's people are warned without any names: a yellow alert once, a little after someone starts scanning, and a red
  * alert a little while after a scanner finishes decoding.
  */
 public final class Scanners {
@@ -48,8 +48,11 @@ public final class Scanners {
     public static final String[] COLOR_NAMES = {"Red", "Orange", "Yellow", "Green", "Blue", "Purple"};
     public static final String[] COLOR_CODES = {"§c", "§6", "§e", "§a", "§b", "§5"};
 
-    /** What a scanner hears of one transmission: its signal, and how much of text and voice is lost. */
-    public record Heard(Player player, int bars, double textShare, float voiceLoss, boolean masked) {
+    /**
+     * What a scanner hears of one transmission: its signal, how much text is lost to a weak signal (words drop
+     * out) and how much to encryption it has not decoded (letters turn to static), and how much voice is lost.
+     */
+    public record Heard(Player player, int bars, double signalShare, double keyShare, float voiceLoss, boolean masked) {
     }
 
     /** One guess at the code: the colours tried, how many sat in the right place, and how many were right but elsewhere. */
@@ -176,6 +179,8 @@ public final class Scanners {
     private final Map<String, Entry> entries = new HashMap<>();
     /** Frequency name -> when a scanner was last on it; a yellow alert is sent only when it had been quiet a while. */
     private final Map<String, Long> scanSeen = new HashMap<>();
+    /** Frequency name -> when its yellow alert goes out (it is held back a few seconds after scanning starts). */
+    private final Map<String, Long> yellowDue = new HashMap<>();
     private final Map<UUID, Puzzle> puzzles = new HashMap<>();
     /** Players who have the Decoder open right now. */
     private final Set<UUID> viewing = new HashSet<>();
@@ -265,12 +270,11 @@ public final class Scanners {
             return "§5Signal Scanner: §7tuned to §f" + channel + "§7, but nobody has claimed that frequency.";
         }
         if (!locked(frequency, player)) {
-            return "§5Signal Scanner: §7tuned to §f" + channel + "§7, " + (frequency.access() == Frequency.Access.PUBLIC
-                    ? "a public frequency, heard clearly." : "you have its key, heard clearly.");
+            return "§5Signal Scanner: §7tuned to §f" + channel + "§7, clear.";
         }
         double progress = progress(scanner, frequency);
-        return "§5Signal Scanner: §7tuned to §f" + channel + " §7(encrypted), decoded §f" + (int) Math.floor(progress * 100) + "%§7"
-                + (progress >= 1 ? " - fully decoded." : ". Right-click to open the Decoder.");
+        return "§5Signal Scanner: §7tuned to §f" + channel + " §7(encrypted), "
+                + (progress >= 1 ? "decoded." : "decoded §f" + (int) Math.floor(progress * 100) + "%§7.");
     }
 
     // ------------------------------------------------------------------ hearing
@@ -289,7 +293,7 @@ public final class Scanners {
         if (reach.towers().isEmpty()) {
             return heard;
         }
-        double garbleMax = plugin.getConfig().getDouble("garble.max-share", 0.5);
+        double garbleMax = plugin.getConfig().getDouble("garble.max-share", 0.35);
         for (Player player : online.get()) {
             ItemStack scanner = held(player);
             if (scanner == null || normal.contains(player) || !sender.channel().equals(items.scannerChannel(scanner))) {
@@ -308,9 +312,8 @@ public final class Scanners {
                 keyVoice = ENCRYPTED_VOICE_LOSS * remaining;
                 masked = remaining > 0;
             }
-            double text = 1 - (1 - keyText) * (1 - Garble.share(bars, garbleMax));
             float voice = (float) (1 - (1 - keyVoice) * (1 - portables.staticLoss(bars)));
-            heard.add(new Heard(player, bars, text, voice, masked));
+            heard.add(new Heard(player, bars, Garble.share(bars, garbleMax), keyText, voice, masked));
         }
         return heard;
     }
@@ -318,17 +321,19 @@ public final class Scanners {
     /** Sends a radio text line to the scanners that hear {@code sender}; {@code speaker} null means a system line. */
     public void relayText(Radio sender, @Nullable String speaker, String text, Collection<? extends Player> normal) {
         for (Heard heard : hearing(sender, normal)) {
-            String garbled = Garble.apply(text, heard.textShare(), ThreadLocalRandom.current());
+            // A weak signal loses words first; whatever is still encrypted then turns to static.
+            String garbled = Garble.apply(Garble.dropouts(text, heard.signalShare(), ThreadLocalRandom.current()),
+                    heard.keyShare(), ThreadLocalRandom.current());
             String who = speaker == null ? "" : (heard.masked() ? "§8???§7: " : "§7" + speaker + ": ");
-            Chat.send(heard.player(), "§5§l[SCANNER - " + sender.channel() + "] " + who + "§f" + garbled);
+            Chat.send(heard.player(), Chat.tag("§5", "Scanner", sender.channel()) + who + "§f" + garbled);
         }
     }
 
     /** Tells scanners that someone is speaking by voice, the way terminals' listeners are told. */
     public void speaking(Radio sender, String speaker, Collection<? extends Player> normal) {
         for (Heard heard : hearing(sender, normal)) {
-            Chat.send(heard.player(), "§5§l[SCANNER - " + sender.channel() + "] "
-                    + (heard.masked() ? "§8Someone" : "§7" + speaker) + " §7is speaking on this frequency.");
+            Chat.send(heard.player(), Chat.tag("§5", "Scanner", sender.channel())
+                    + (heard.masked() ? "§8Someone" : "§7" + speaker) + " §7is speaking.");
         }
     }
 
@@ -446,7 +451,7 @@ public final class Scanners {
         Arrays.fill(puzzle.current, -1);
         puzzle.filled = 0;
         puzzle.nextGuessAt = now + (long) (guessCooldown(bars) * 1000);
-        Chat.send(player, "§5§l[SCANNER] §7Guess " + puzzle.guesses.size() + ": " + squares(pegs) + " §a" + exact
+        Chat.send(player, Chat.tag("§5", "Scanner") + "§7Guess " + puzzle.guesses.size() + ": " + squares(pegs) + " §a" + exact
                 + " in place§7, §e" + misplaced + " elsewhere§7.");
         if (exact == puzzle.slots) {
             return solveStage(player, frequency, puzzle, id, now);
@@ -456,8 +461,7 @@ public final class Scanners {
             puzzle.lockedUntil = now + lockout;
             puzzle.restart();
             player.playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_BASS, 1f, 0.6f);
-            Chat.send(player, "§5§l[SCANNER] §cDecode failed. The scanner is recalibrating for " + (lockout / 1000)
-                    + " seconds, and the code has changed.");
+            Chat.send(player, Chat.tag("§5", "Scanner") + "§cDecode failed. The scanner is recalibrating and the code has changed.");
             return Result.FAILED;
         }
         player.playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_HAT, 0.7f, 1.0f + 0.1f * exact);
@@ -476,15 +480,15 @@ public final class Scanners {
             entry.redAt = now + (max > min ? ThreadLocalRandom.current().nextLong(min, max + 1) : min);
             puzzles.remove(player.getUniqueId());
             player.playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_CHIME, 1f, 1.6f);
-            Chat.send(player, "§5§l[SCANNER] §aFrequency §f" + frequency.name()
-                    + "§a decoded. You can hear it clearly until its password is changed.");
+            Chat.send(player, Chat.tag("§5", "Scanner") + "§aFrequency §f" + frequency.name()
+                    + "§a decoded. It stays clear until the password is changed.");
             return Result.DECODED;
         }
         puzzle.stage = entry.solved;
         puzzle.restart();
         player.playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_CHIME, 1f, 1.2f);
-        Chat.send(player, "§5§l[SCANNER] §aCode " + entry.solved + "/" + stages() + " broken. The noise on §f"
-                + frequency.name() + "§a is thinning out (" + (int) Math.floor(100.0 * entry.solved / stages()) + "% decoded).");
+        Chat.send(player, Chat.tag("§5", "Scanner") + "§aCode " + entry.solved + "/" + stages() + " broken. The noise on §f"
+                + frequency.name() + "§a is thinning out.");
         return Result.STAGE_SOLVED;
     }
 
@@ -576,26 +580,53 @@ public final class Scanners {
         }
     }
 
-    /** Warns a frequency's people once when someone starts scanning it; it takes a quiet spell before it can warn again. */
+    /**
+     * Warns a frequency's people once when someone starts scanning it, a little after it starts and without saying
+     * what it is; it takes a quiet spell before it can warn again.
+     */
     private void yellowAlerts(Set<String> scanning, long now) {
         long rearm = (long) (Math.max(0, plugin.getConfig().getDouble("scanner.yellow-rearm-minutes", 10.0)) * 60_000);
+        long minDelay = (long) (Math.max(0, plugin.getConfig().getDouble("scanner.yellow-alert-delay-min-seconds", 10.0)) * 1000);
+        long maxDelay = (long) (Math.max(0, plugin.getConfig().getDouble("scanner.yellow-alert-delay-max-seconds", 40.0)) * 1000);
         for (String name : scanning) {
             Long seen = scanSeen.put(name, now);
             if (seen != null && now - seen <= rearm) {
                 continue; // still the same scanning: already warned
             }
-            Frequency frequency = manager.frequencies().get(name);
+            long delay = maxDelay <= 0 ? 0 : ThreadLocalRandom.current().nextLong(Math.min(minDelay, maxDelay), maxDelay + 1);
+            yellowDue.putIfAbsent(name, now + delay); // a warning already waiting is not pushed back
+        }
+        var due = yellowDue.entrySet().iterator();
+        while (due.hasNext()) {
+            var next = due.next();
+            if (next.getValue() > now) {
+                continue;
+            }
+            due.remove();
+            Frequency frequency = manager.frequencies().get(next.getKey());
             if (frequency == null) {
                 continue;
             }
-            String line = Alerts.line(Alerts.Level.YELLOW, "Scanner", "Someone is scanning frequency "
-                    + Alerts.name(frequency.name()) + ".");
+            String line = Alerts.line(Alerts.Level.YELLOW, "Security", "Unusual activity on "
+                    + Alerts.name(frequency.name()) + ". Someone may be listening in.");
             for (Player target : recipients(frequency)) {
                 Chat.send(target, line);
                 target.playSound(target.getLocation(), Sound.BLOCK_NOTE_BLOCK_BELL, 0.6f, 1.0f);
             }
         }
         scanSeen.values().removeIf(seen -> now - seen > Math.max(rearm, 1000L));
+    }
+
+    /** How many scanners have progress on this frequency's current password; a password change wipes them all. */
+    public int progressOn(Frequency frequency) {
+        int count = 0;
+        for (Entry entry : entries.values()) {
+            if (entry.channel.equals(frequency.name()) && entry.hash.equals(frequency.hash())
+                    && (entry.cracked || entry.solved > 0)) {
+                count++;
+            }
+        }
+        return count;
     }
 
     private void fadeAndAlert(Set<Entry> touched, long now) {
@@ -612,7 +643,7 @@ public final class Scanners {
             if (entry.redAt > 0 && now >= entry.redAt) {
                 entry.redAt = 0;
                 dirty = true;
-                String line = Alerts.line(Alerts.Level.RED, "Decrypted", "Frequency " + Alerts.name(frequency.name())
+                String line = Alerts.line(Alerts.Level.RED, "Security", "Frequency " + Alerts.name(frequency.name())
                         + " has been decrypted. Change its password now.");
                 recipients(frequency).forEach(target -> Chat.send(target, line));
             }
@@ -667,6 +698,7 @@ public final class Scanners {
     public void clear() {
         entries.clear();
         scanSeen.clear();
+        yellowDue.clear();
         puzzles.clear();
         viewing.clear();
     }

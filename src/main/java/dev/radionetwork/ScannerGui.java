@@ -72,28 +72,19 @@ public final class ScannerGui implements InventoryHolder {
             inventory.setItem(CURRENT_ROW * 9 + i, color < 0 ? button(Material.WHITE_STAINED_GLASS_PANE, "§7Empty") : peg(color));
         }
         inventory.setItem(SLOT_INFO, button(Material.CLOCK, "§bCode " + (puzzle.stage() + 1) + " of " + stages,
-                "§7Break the hidden code of §f" + slots + "§7 colours.",
-                "§7Guess " + Math.min(guesses.size() + 1, maxGuesses) + " of " + maxGuesses + ".",
-                "§aGreen§7: right colour, right place.",
-                "§eYellow§7: right colour, wrong place.",
-                "§8Colours can repeat. Every guess is in chat too."));
+                "§7" + slots + " colours. Guess " + Math.min(guesses.size() + 1, maxGuesses) + " of " + maxGuesses + "."));
         String state = lock > 0 ? "§crecalibrating, " + (int) Math.ceil(lock) + " s"
                 : "§a" + "|".repeat(Math.max(0, bars)) + "§8" + "|".repeat(Math.max(0, 4 - bars));
-        inventory.setItem(SLOT_STATUS, button(Material.AMETHYST_SHARD, "§5Signal", "§7Signal: " + state,
-                "§7A weak signal means a longer wait", "§7between guesses.", "§8No signal closes the Decoder."));
+        inventory.setItem(SLOT_STATUS, button(Material.AMETHYST_SHARD, "§5Signal", "§7Signal: " + state));
         for (int color = 0; color < Scanners.COLORS; color++) {
-            ItemStack palette = peg(color);
-            ItemMeta meta = palette.getItemMeta();
-            meta.lore(List.of(Chat.item("§eClick to add this colour.")));
-            palette.setItemMeta(meta);
-            inventory.setItem(PALETTE_START + color, palette);
+            inventory.setItem(PALETTE_START + color, peg(color));
         }
-        inventory.setItem(SLOT_RETUNE, button(Material.WRITABLE_BOOK, "§6Change frequency", "§eClick to type another one."));
+        inventory.setItem(SLOT_RETUNE, button(Material.WRITABLE_BOOK, "§6Change frequency"));
         inventory.setItem(SLOT_UNDO, button(Material.BARRIER, "§cTake back the last colour"));
         boolean ready = puzzle.filled() >= slots;
-        inventory.setItem(SLOT_SUBMIT, button(Material.EMERALD, "§aTry this code",
-                ready ? (wait > 0 ? "§7Ready in §f" + (int) Math.ceil(wait) + " s§7." : "§eClick to try it.")
-                        : "§7Pick " + (slots - puzzle.filled()) + " more colour" + (slots - puzzle.filled() == 1 ? "" : "s") + "."));
+        inventory.setItem(SLOT_SUBMIT, ready && wait <= 0 ? button(Material.EMERALD, "§aTry this code")
+                : button(Material.EMERALD, "§aTry this code", ready ? "§7Ready in §f" + (int) Math.ceil(wait) + " s§7."
+                        : "§7Needs " + (slots - puzzle.filled()) + " more."));
     }
 
     private static ItemStack peg(int color) {

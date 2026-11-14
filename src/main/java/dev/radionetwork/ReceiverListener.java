@@ -131,7 +131,7 @@ public final class ReceiverListener implements Listener {
         boolean antenna = items.hasAntenna(player.getInventory().getItemInMainHand());
         String reason = "§7No public channel is in range of a powered terminal.";
         if (!antenna && portables.depthLoss(player.getLocation()) > 0) {
-            reason = "§7Rock above you weakens the signal. Go up, or fit an Underground Antenna.";
+            reason = "§7Too much rock overhead.";
         }
         gui.showResults(portables.scan(player.getLocation(), antenna), reason);
         gui.refreshStatus(player, portables);
@@ -201,8 +201,8 @@ public final class ReceiverListener implements Listener {
         gui.refreshStatus(player, portables);
         player.playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_CHIME, 1f, 1.5f);
         Chat.send(player, antenna
-                ? "§aUnderground Antenna fitted. It hears through rock, at reduced range."
-                : "§aEarpiece fitted. Only you hear the audio now.");
+                ? "§aUnderground Antenna fitted."
+                : "§aEarpiece fitted.");
         return true;
     }
 
@@ -263,7 +263,7 @@ public final class ReceiverListener implements Listener {
     }
 
     private void askPassword(Player player, Frequency frequency) {
-        Chat.send(player, "§eFrequency §6" + frequency.name() + " §eis ENCRYPTED. Enter its password (the key) to listen in.");
+        Chat.send(player, "§eFrequency §6" + frequency.name() + " §eis encrypted. Enter the password to listen in.");
         plugin.getServer().getScheduler().runTask(plugin, () -> TextPrompt.open(plugin, player, "Encrypted Frequency",
                 "Password for " + frequency.name(), "", 32, text -> {
                     PasswordGuard guard = manager.passwordGuard();

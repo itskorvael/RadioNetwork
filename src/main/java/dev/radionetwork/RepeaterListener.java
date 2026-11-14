@@ -44,7 +44,6 @@ public final class RepeaterListener implements Listener {
     public void onPlace(BlockPlaceEvent event) {
         if (event.getBlockPlaced().getType() == Material.LIGHTNING_ROD && items.isRepeater(event.getItemInHand())) {
             repeaters.register(event.getBlockPlaced(), event.getPlayer().getName());
-            Chat.send(event.getPlayer(), "§aSignal Repeater placed. Link it to a Radio Terminal with Signal Cables.");
         }
     }
 
@@ -137,41 +136,40 @@ public final class RepeaterListener implements Listener {
         String key = music == null ? null : music.selected(player);
         Radio terminal = key == null ? null : manager.get(key);
         if (terminal == null) {
-            deny(player, "§cRight-click a Radio Terminal with the cable first, then the repeater.");
+            deny(player, "§cNo terminal selected.");
             return;
         }
         if (!RadioManager.isOperator(player, terminal)) {
-            deny(player, "§cOnly the terminal's operator (" + terminal.creatorName() + ") can link a repeater to it.");
+            deny(player, "§cOnly " + terminal.creatorName() + " can link to that terminal.");
             return;
         }
         Repeaters.Repeater existing = repeaters.forTerminal(terminal);
         if (existing == repeater) {
-            deny(player, "§cThis repeater is already linked to that terminal.");
+            deny(player, "§cAlready linked.");
             return;
         }
         if (existing != null) {
-            deny(player, "§cThat terminal already has a Signal Repeater (at " + existing.center().getBlockX() + " "
-                    + existing.center().getBlockY() + " " + existing.center().getBlockZ() + "). One is enough; break it to use another.");
+            deny(player, "§cThat terminal already has a repeater at " + existing.center().getBlockX() + " "
+                    + existing.center().getBlockY() + " " + existing.center().getBlockZ() + ".");
             return;
         }
         Location from = repeater.center();
         Location to = terminal.center();
         if (from == null || to == null || !from.getWorld().equals(to.getWorld())) {
-            deny(player, "§cThe repeater and the terminal must be in the same world.");
+            deny(player, "§cNot in the same world.");
             return;
         }
         int perCable = Math.max(1, plugin.getConfig().getInt("relay.blocks-per-cable", 4));
         int maxLength = plugin.getConfig().getInt("relay.max-link-length", 16);
         double distance = from.distance(to);
         if (distance > maxLength) {
-            deny(player, "§cToo far: " + (int) Math.ceil(distance) + " blocks apart, and a link can be at most " + maxLength + ".");
+            deny(player, "§cToo far. Cables reach " + maxLength + " blocks.");
             return;
         }
         int needed = (int) Math.ceil(distance / perCable);
         boolean free = player.getGameMode() == GameMode.CREATIVE;
         if (!free && items.countCables(player) < needed) {
-            deny(player, "§cYou need " + needed + " Signal Cable" + (needed == 1 ? "" : "s") + " for " + (int) Math.ceil(distance)
-                    + " blocks (1 per " + perCable + "), and you have " + items.countCables(player) + ".");
+            deny(player, "§cNeeds " + needed + " cable" + (needed == 1 ? "" : "s") + ", you have " + items.countCables(player) + ".");
             return;
         }
         if (!free) {
@@ -181,9 +179,7 @@ public final class RepeaterListener implements Listener {
         music.clearSelection(player);
         player.playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_CHIME, 1f, 1.6f);
         music.flashLine(player, from, to);
-        Chat.send(player, "§aRepeater linked. The terminal" + (terminal.isTuned() ? " on §f" + terminal.channel() + "§a" : "")
-                + " now passes signals on" + (manager.isRelaying(terminal) ? "." : " once it is tuned and powered.")
-                + " Used " + (free ? 0 : needed) + " cable" + (needed == 1 ? "" : "s") + ".");
+        Chat.send(player, "§7Linked.");
     }
 
     private void deny(Player player, String message) {

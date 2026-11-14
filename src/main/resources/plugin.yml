@@ -17,8 +17,8 @@ commands:
     permission: radionetwork.use
 
   radio:
-    description: Manage your radio frequency (members, trust, access, transfer, release) or, for ops, locate every radio.
-    usage: /radio <info|members|list|claim|mode|access|trust|untrust|transfer|release|locate|give>
+    description: Manage your radio frequency (members, trust, access, transfer, release) or, for ops, locate every radio, see which signs announce, and list or release any frequency.
+    usage: /radio <info|members|list|claim|mode|access|trust|untrust|transfer|release|locate|signs|give>
     permission: radionetwork.use
 
 permissions:

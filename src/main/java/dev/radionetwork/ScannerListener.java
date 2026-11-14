@@ -63,8 +63,7 @@ public final class ScannerListener implements Listener {
         Frequency decodable = player.isSneaking() ? null : scanners.decodable(player, held);
         if (decodable != null) {
             if (scanners.signal(player, decodable) < 1) {
-                Alerts.send(player, Alerts.Level.YELLOW, "Scanner", "No signal on " + Alerts.name(decodable.name())
-                        + ". Get within range of one of its terminals to decode it.");
+                Alerts.send(player, Alerts.Level.YELLOW, "Signal", "No signal on " + Alerts.name(decodable.name()) + ".");
             } else {
                 plugin.getServer().getScheduler().runTask(plugin, () -> openDecoder(player));
                 return;
@@ -132,7 +131,7 @@ public final class ScannerListener implements Listener {
         Scanners.Puzzle puzzle = frequency == null ? null : scanners.puzzle(player, scanner, frequency);
         if (puzzle == null) {
             player.closeInventory();
-            deny(player, "§cKeep your Signal Scanner in your hand, tuned to an encrypted frequency, to decode it.");
+            deny(player, "§cScanner not in hand.");
             return;
         }
         if (slot >= ScannerGui.PALETTE_START && slot < ScannerGui.PALETTE_START + Scanners.COLORS) {
@@ -164,11 +163,11 @@ public final class ScannerListener implements Listener {
             case DECODED -> player.closeInventory();
             case NO_SIGNAL, WRONG_SCANNER -> {
                 player.closeInventory();
-                deny(player, "§cThe Decoder lost its signal.");
+                deny(player, Alerts.line(Alerts.Level.YELLOW, "Signal", "Signal lost."));
             }
-            case NOT_READY -> actionBar(player, "§cPick all " + puzzle.slots() + " colours first.");
-            case WAIT -> actionBar(player, "§eThe scanner is still processing the last guess.");
-            case LOCKED_OUT -> actionBar(player, "§cThe scanner is recalibrating.");
+            case NOT_READY -> actionBar(player, "§cNeeds " + puzzle.slots() + " colours.");
+            case WAIT -> actionBar(player, "§7Processing.");
+            case LOCKED_OUT -> actionBar(player, "§cRecalibrating.");
             default -> {
             }
         }
@@ -227,25 +226,24 @@ public final class ScannerListener implements Listener {
     private void submit(Player player, String text, EquipmentSlot slot) {
         ItemStack hand = inHand(player, slot);
         if (!items.isScanner(hand)) {
-            deny(player, "§cKeep your Signal Scanner in the same hand while you tune it.");
+            deny(player, "§cScanner not in hand.");
             return;
         }
         String channel = RadioManager.cleanChannel(text);
         if (channel.isEmpty()) {
             setInHand(player, slot, items.withScannerChannel(hand, null));
             player.playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_CHIME, 1f, 0.7f);
-            Chat.send(player, "§7Signal Scanner switched off.");
+            Chat.send(player, Chat.tag("§5", "Scanner") + "§7Switched off.");
             return;
         }
         Frequency frequency = manager.frequencies().get(channel);
         if (frequency == null) {
-            deny(player, "§cNo frequency called §f" + channel + " §cexists. A radio terminal has to claim it first.");
+            deny(player, "§cNo frequency called §f" + channel + "§c.");
             return;
         }
         ItemStack tuned = items.withScannerChannel(hand, frequency.name());
         setInHand(player, slot, tuned);
         player.playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_CHIME, 1f, 1.5f);
-        Chat.send(player, "§aScanner tuned to §f" + frequency.name() + "§a.");
         Chat.send(player, scanners.statusLine(player, tuned));
     }
 

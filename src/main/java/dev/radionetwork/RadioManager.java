@@ -374,6 +374,15 @@ public final class RadioManager {
         return Math.max(0, plugin.getConfig().getInt("relay.max-hops", 3));
     }
 
+    /**
+     * Bars a listener loses for a signal that passed through {@code relays} relays: {@code relay.bars-per-hop}
+     * each (0 by default, since a repeater sends the signal on fresh; what weakens it is the distance from the
+     * last relay, which the bars already count).
+     */
+    public int relayLoss(int relays) {
+        return Math.max(0, plugin.getConfig().getInt("relay.bars-per-hop", 0)) * Math.max(0, relays);
+    }
+
     private Repeaters repeaters;
 
     public void repeaters(Repeaters repeaters) {
@@ -418,9 +427,14 @@ public final class RadioManager {
      * work out where their zones reach this way. (Jamming never switches a relay off; it only weakens listeners.)
      */
     public Reach reachFrom(Radio sender, boolean ignoreJam) {
+        return reachFrom(sender, ignoreJam, false);
+    }
+
+    /** As above; {@code ignorePower} also reaches from a sender that has run out of fuel (a failing jammer's last seconds). */
+    public Reach reachFrom(Radio sender, boolean ignoreJam, boolean ignorePower) {
         List<Radio> towers = new ArrayList<>();
         Map<Radio, Integer> relays = new java.util.IdentityHashMap<>();
-        if (!sender.isPowered() || !isLive(sender) || (!ignoreJam && senderJam(sender) >= 4)) {
+        if ((!ignorePower && !sender.isPowered()) || !isLive(sender) || (!ignoreJam && senderJam(sender) >= 4)) {
             return new Reach(towers, relays);
         }
         List<Radio> candidates = new ArrayList<>();
@@ -468,8 +482,8 @@ public final class RadioManager {
 
     /**
      * The signal of each listener standing at a tower, but only for those whose signal is below a clean four
-     * bars: each relay the signal passed through costs one bar, and jamming (at the sender and where the
-     * listener stands) costs more. Four bars is clean, which turns into static the way a weak Pocket Receiver
+     * bars: relays cost {@code relay.bars-per-hop} each (none by default), and jamming (at the sender and where
+     * the listener stands) costs more. Four bars is clean, which turns into static the way a weak Pocket Receiver
      * does. Listeners left with no bars at all are not listed here: they do not hear it.
      */
     public Map<java.util.UUID, Integer> relayBars(Radio sender) {
@@ -514,8 +528,8 @@ public final class RadioManager {
     }
 
     /**
-     * The signal (1-4 bars) of everyone who hears this sender: people at a tower get four, less a bar per relay
-     * and for jamming; Pocket Receiver holders get what distance, depth and jamming leave them. Someone who is
+     * The signal (1-4 bars) of everyone who hears this sender: people at a tower get four, less {@link #relayLoss}
+     * and the jamming; Pocket Receiver holders get what distance, depth and jamming leave them. Someone who is
      * both gets the better of the two. Anyone missing from the map is not listening.
      */
     public Map<java.util.UUID, Integer> signalOf(Radio sender) {
@@ -530,8 +544,8 @@ public final class RadioManager {
 
     /** Radio text as a listener with this signal receives it: garbled more the weaker the signal (4 bars is clean). */
     public String garble(String text, int bars) {
-        double share = Garble.share(bars, plugin.getConfig().getDouble("garble.max-share", 0.5));
-        return Garble.apply(text, share, java.util.concurrent.ThreadLocalRandom.current());
+        double share = Garble.share(bars, plugin.getConfig().getDouble("garble.max-share", 0.35));
+        return Garble.dropouts(text, share, java.util.concurrent.ThreadLocalRandom.current());
     }
 
     /** Signal (1-4 bars) of each listener who hears this channel through a Pocket Receiver; empty if none. */
@@ -609,8 +623,8 @@ public final class RadioManager {
     }
 
     /**
-     * Players at a tower of this reach with the signal each gets (1-4 bars): four, less one per relay the
-     * signal passed through, less the jamming at the sender and where they stand; the best tower they stand
+     * Players at a tower of this reach with the signal each gets (1-4 bars): four, less {@link #relayLoss} for
+     * the relays the signal passed through, less the jamming at the sender and where they stand; the best tower they stand
      * at counts. Anyone left with no bars hears nothing and is not listed.
      */
     private Map<Player, Integer> towerBars(Radio sender, Reach reach) {
@@ -622,7 +636,7 @@ public final class RadioManager {
                 continue;
             }
             int used = reach.relays().get(receiver);
-            int base = (used > 0 ? Math.max(1, 4 - used) : 4) - senderLoss;
+            int base = (used > 0 ? Math.max(1, 4 - relayLoss(used)) : 4) - senderLoss;
             for (Player player : center.getWorld().getPlayers()) {
                 if (isAtTower(player.getLocation(), center)) {
                     int strength = base - jamLoss(player.getLocation());
@@ -699,7 +713,24 @@ public final class RadioManager {
      * @return true when a radio carried it
      */
     public boolean announce(World world, double x, double y, double z, String channel, String text) {
-        double search = plugin.getConfig().getDouble("announcements.search-radius", 16.0);
+        return announce(world, x, y, z, channel, text, null);
+    }
+
+    /**
+     * As above, on behalf of {@code speaker} (whoever placed the sign): the announcement is only sent if that
+     * player could speak on the channel themselves, so a sign cannot talk on a frequency its placer has no say in.
+     * A null speaker (an admin or a command block) is not checked. A sent announcement is noted in the
+     * announcing-spot log either way.
+     */
+    public boolean announce(World world, double x, double y, double z, String channel, String text,
+                            @Nullable String speaker) {
+        if (speaker != null) {
+            Frequency frequency = frequencies().get(channel);
+            if (frequency == null || !frequency.canSpeak(speaker)) {
+                return false;
+            }
+        }
+        double search = plugin.getConfig().getDouble("announcements.search-radius", 48.0);
         Location point = new Location(world, x, y, z);
         Radio sender = null;
         double best = Double.MAX_VALUE;
@@ -722,14 +753,28 @@ public final class RadioManager {
         Set<Player> listeners = listenersOf(sender);
         for (Player listener : listeners) {
             String heard = garble(text, signal.getOrDefault(listener.getUniqueId(), 4));
-            Chat.send(listener, "§b§l[RADIO - " + channel + "] §f" + heard);
+            Chat.send(listener, Chat.tag("§b", "Radio", channel) + "§f" + heard);
             listener.playSound(listener.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BELL, 0.6f, 1.0f);
         }
         if (scanners != null) {
             scanners.relayText(sender, null, text, listeners);
         }
         pulseRelays(sender);
+        if (signs != null) {
+            signs.record(world.getKey().toString(), (int) Math.floor(x), (int) Math.floor(y), (int) Math.floor(z),
+                    speaker, channel, text, System.currentTimeMillis());
+        }
         return true;
+    }
+
+    private AnnouncementSigns signs;
+
+    public void signs(AnnouncementSigns signs) {
+        this.signs = signs;
+    }
+
+    public @Nullable AnnouncementSigns signs() {
+        return signs;
     }
 
     /**
@@ -738,13 +783,19 @@ public final class RadioManager {
      * it reaches the same listeners that a message from this radio would.
      */
     public void announceTunedOut(Radio radio, String who, boolean destroyed) {
-        if (!radio.isTuned()) {
+        if (!announcesPresence(radio)) {
             return;
         }
         String channel = radio.channel();
-        String line = "§e§l[RADIO - " + channel + "] §7" + who + "'s radio "
-                + (destroyed ? "was destroyed and has" : "has") + " tuned out of " + channel + " frequency.";
+        String line = Chat.tag("§e", "Radio", channel) + "§7" + who + "'s radio "
+                + (destroyed ? "was destroyed and has" : "has") + " tuned out.";
         listenersOf(radio).forEach(listener -> Chat.send(listener, line));
+    }
+
+    /** Tuning in and out is announced only on an encrypted frequency; a public channel is open to all and needs no roll call. */
+    public boolean announcesPresence(Radio radio) {
+        Frequency frequency = frequencyOf(radio);
+        return frequency != null && frequency.access() == Frequency.Access.ENCRYPTED;
     }
 
     public static boolean isOperator(Player player, Radio radio) {

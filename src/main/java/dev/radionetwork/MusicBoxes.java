@@ -678,7 +678,7 @@ public final class MusicBoxes {
     private void startSongFor(Player listener, Box box, Radio terminal) {
         Track next = nextTrack(box);
         SongLibrary.Meta meta = songs.get(box.current().songId());
-        Chat.send(listener, "§d§l[RADIO - " + terminal.channel() + "] §f♪ Now playing: " + name(box.current())
+        Chat.send(listener, Chat.tag("§d", "Radio", terminal.channel()) + "§fNow playing: " + name(box.current())
                 + (meta == null ? "" : " §7by " + meta.uploader())
                 + (next == null ? "" : " §7(next: " + name(next) + ")"));
     }
@@ -766,11 +766,11 @@ public final class MusicBoxes {
     private void tellMissed(Player listener, Box box, Radio terminal, long millisLeft, boolean repeat) {
         String song = name(box.current());
         if (repeat) {
-            Chat.send(listener, "§d§l[RADIO - " + terminal.channel() + "] §7♪ " + song
+            Chat.send(listener, Chat.tag("§d", "Radio", terminal.channel()) + "§7" + song
                     + " is already playing. You'll catch it from the start in " + Chat.duration(Math.max(1, millisLeft / 1000)) + ".");
         } else {
-            Chat.send(listener, "§d§l[RADIO - " + terminal.channel() + "] §7♪ " + song
-                    + " started before you tuned in. It plays again when a new disc is started.");
+            Chat.send(listener, Chat.tag("§d", "Radio", terminal.channel()) + "§7" + song
+                    + " started before you tuned in.");
         }
     }
 
@@ -786,7 +786,7 @@ public final class MusicBoxes {
         Set<UUID> atTerminal = new HashSet<>();
         manager.towerListenersOf(terminal).forEach(player -> atTerminal.add(player.getUniqueId()));
         var random = java.util.concurrent.ThreadLocalRandom.current();
-        // People at a terminal the signal reached through relays get crackle too, one bar weaker per relay.
+        // People at a terminal the signal reached through relays get crackle too if the relays cost them bars (relay.bars-per-hop) or a jam does.
         manager.relayBars(terminal).forEach((id, bars) -> crackle(portables, id, bars, listeners, random));
         manager.portableBars(terminal).forEach((id, bars) -> {
             if (!atTerminal.contains(id)) {
@@ -811,7 +811,7 @@ public final class MusicBoxes {
         // started, and fades out as soon as they walk away from it.
         listener.playSound(Sound.sound(soundKey(box.disc()), Sound.Source.RECORD, volume, 1f), Sound.Emitter.self());
         Track next = nextTrack(box);
-        Chat.send(listener, "§d§l[RADIO - " + terminal.channel() + "] §f♪ Now playing: " + songName(box.disc())
+        Chat.send(listener, Chat.tag("§d", "Radio", terminal.channel()) + "§fNow playing: " + songName(box.disc())
                 + (next == null ? "" : " §7(next: " + name(next) + ")"));
     }
 

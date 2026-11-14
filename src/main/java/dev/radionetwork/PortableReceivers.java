@@ -48,6 +48,11 @@ public final class PortableReceivers {
 
     /** One public channel found by a scan, with its best signal. */
     public record ScanResult(String channel, int towers, int nearestBlocks, String direction, int bars) {
+
+        /** A rough idea of how far the nearest terminal is, not a measurement. */
+        public String range() {
+            return nearestBlocks <= 32 ? "close" : nearestBlocks <= 96 ? "some way off" : "far";
+        }
     }
 
     private static final String[] DIRECTIONS = {"N", "NE", "E", "SE", "S", "SW", "W", "NW"};
@@ -192,8 +197,8 @@ public final class PortableReceivers {
             for (Radio tower : towers) {
                 int towerBars = effectiveBars(where, tower, antenna, loss);
                 if (towerBars > 0) {
-                    // Each relay the signal passed through costs a bar, but never silences a tower that is in reach.
-                    towerBars = Math.max(1, towerBars - relays.getOrDefault(tower, 0));
+                    // Relays cost relay.bars-per-hop each (none by default), but never silence a tower that is in reach.
+                    towerBars = Math.max(1, towerBars - manager.relayLoss(relays.getOrDefault(tower, 0)));
                 }
                 best = Math.max(best, towerBars);
             }
@@ -215,7 +220,7 @@ public final class PortableReceivers {
 
     /**
      * The signal a plain listener (no antenna) gets here from the towers that carry {@code sender}: what distance,
-     * depth and jamming leave, a bar less per relay, and less again if the sender is being jammed. 0 means nothing.
+     * depth and jamming leave, {@code relay.bars-per-hop} less per relay (none by default), and less again if the sender is being jammed. 0 means nothing.
      */
     public int barsFrom(Location where, Radio sender, List<Radio> towers, Map<Radio, Integer> relays) {
         int loss = depthLoss(where);
@@ -223,7 +228,7 @@ public final class PortableReceivers {
         for (Radio tower : towers) {
             int bars = effectiveBars(where, tower, false, loss);
             if (bars > 0) {
-                bars = Math.max(1, bars - relays.getOrDefault(tower, 0));
+                bars = Math.max(1, bars - manager.relayLoss(relays.getOrDefault(tower, 0)));
             }
             best = Math.max(best, bars);
         }
@@ -491,10 +496,10 @@ public final class PortableReceivers {
         }
         lastNotice.put(player.getUniqueId(), now);
         if (step.found() != null) {
-            Chat.send(player, "§7Pocket Receiver lost §f" + preferred + "§7 and locked onto §f" + step.found().channel()
-                    + " §7(~" + step.found().nearestBlocks() + " blocks " + step.found().direction() + ").");
+            Alerts.send(player, Alerts.Level.YELLOW, "Signal", "Lost " + Alerts.name(preferred) + ". Now on "
+                    + Alerts.name(step.found().channel()) + ".");
         } else if (step.auto() == null) {
-            Chat.send(player, "§7Pocket Receiver is back on §f" + preferred + "§7.");
+            Alerts.send(player, Alerts.Level.CLEAR, "Signal", "Back on " + Alerts.name(preferred) + ".");
         }
     }
 
@@ -569,7 +574,12 @@ public final class PortableReceivers {
         }
         lastAlert.put(id, time);
         reported.put(id, now);
-        Chat.send(player, message);
+        // Only losing access or being jammed goes to chat; the rest flashes above the hotbar so chat stays for talk.
+        if (now.state() == State.LOCKED || now.state() == State.JAMMED) {
+            Chat.send(player, message);
+        } else {
+            player.sendActionBar(Chat.text(message));
+        }
     }
 
     /** The alert for a change, or null when it should pass silently. */
@@ -581,28 +591,21 @@ public final class PortableReceivers {
         return switch (now.state()) {
             case OFF -> null;
             case NO_SIGNAL -> Alerts.line(Alerts.Level.YELLOW, "Signal", "Lost the signal on " + channel + ".");
-            case SCANNING -> Alerts.line(Alerts.Level.YELLOW, "Signal", "Lost " + channel + ". Scanning for another channel...");
-            case TOO_DEEP -> Alerts.line(Alerts.Level.YELLOW, "Signal", "Too deep to hear " + channel
-                    + ". Go up, or fit an Underground Antenna.");
+            case SCANNING -> Alerts.line(Alerts.Level.YELLOW, "Signal", "Lost " + channel + ". Searching.");
+            case TOO_DEEP -> Alerts.line(Alerts.Level.YELLOW, "Signal", "Too deep to hear " + channel + ".");
             case LOCKED -> Alerts.line(Alerts.Level.RED, "Access", "You no longer have access to " + channel + ".");
-            case JAMMED -> Alerts.line(Alerts.Level.RED, "Jammed", "Signal jammed. Disconnecting from " + channel + "...");
+            case JAMMED -> Alerts.line(Alerts.Level.RED, "Signal", "Signal jammed on " + channel + ".");
             case OK -> {
                 if (signal.auto()) {
                     yield null; // the auto-scan hop already told the player
                 }
-                if (sameChannel && before.state() == State.JAMMED) {
-                    yield Alerts.line(Alerts.Level.CLEAR, "Signal", "Signal restored. Reconnecting to " + channel + " "
-                            + bars(signal.bars()) + Alerts.Level.CLEAR.color() + ".");
-                }
                 if (wasProblem) {
                     yield Alerts.line(Alerts.Level.CLEAR, "Signal", "Signal back on " + channel + " "
-                            + bars(signal.bars()) + Alerts.Level.CLEAR.color() + ".");
+                            + bars(signal.bars()) + Alerts.Level.CLEAR.body() + ".");
                 }
-                if (now.jam() && !(sameChannel && before.jam())) {
-                    yield Alerts.line(Alerts.Level.YELLOW, "Interference", "Signal degrading: interference rising on " + channel + ".");
-                }
+                // Rising interference is not announced: the bars and the static show it.
                 yield now.weak() && !(sameChannel && before.weak())
-                        ? Alerts.line(Alerts.Level.YELLOW, "Signal", "Signal on " + channel + " is weak.") : null;
+                        ? Alerts.line(Alerts.Level.YELLOW, "Signal", "Weak signal on " + channel + ".") : null;
             }
         };
     }

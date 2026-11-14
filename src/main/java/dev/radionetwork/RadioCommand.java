@@ -28,10 +28,12 @@ public final class RadioCommand implements CommandExecutor, TabCompleter {
     public static final String LOCATE_PERMISSION = "radionetwork.locate";
     public static final String ANNOUNCE_PERMISSION = "radionetwork.announce";
     public static final String GIVE_PERMISSION = "radionetwork.give";
+    public static final String ADMIN_PERMISSION = "radionetwork.admin";
 
     /** Every craftable item, by the name used in {@code /radio give}. */
     private static final List<String> ITEM_NAMES =
-            List.of("terminal", "core", "receiver", "underground_antenna", "earpiece", "jukebox", "cable", "repeater", "jammer", "scanner", "blank_disc");
+            List.of("terminal", "core", "receiver", "underground_antenna", "earpiece", "jukebox", "cable", "repeater", "jammer", "scanner", "blank_disc",
+                    "decommissioned_terminal", "decommissioned_jukebox", "decommissioned_repeater", "decommissioned_jammer");
     private static final int PAGE_SIZE = 8;
 
     private final RadioManager manager;
@@ -57,6 +59,8 @@ public final class RadioCommand implements CommandExecutor, TabCompleter {
             locate(sender, args);
         } else if (sub.equals("announce")) {
             announce(sender, args);
+        } else if (sub.equals("signs")) {
+            signs(sender, args);
         } else if (sub.equals("give")) {
             give(sender, args, label);
         } else if (sub.equals("song")) {
@@ -65,6 +69,9 @@ public final class RadioCommand implements CommandExecutor, TabCompleter {
             jammer(sender, args, label);
         } else if (sub.equals("members")) {
             frequencyCommand.members(sender);
+        } else if (sub.equals("release") && sender.hasPermission(ADMIN_PERMISSION)
+                && !(args.length == 2 && args[1].equalsIgnoreCase("confirm"))) {
+            release(sender, args);
         } else if (FrequencyCommand.SUBCOMMANDS.contains(sub) && !sub.equals("help")) {
             frequencyCommand.onCommand(sender, command, label, args);
         } else {
@@ -91,6 +98,12 @@ public final class RadioCommand implements CommandExecutor, TabCompleter {
         if (sender.hasPermission(LOCATE_PERMISSION)) {
             Chat.send(sender, "§e/" + label + " §flocate [page] §8- list every radio with teleport links");
         }
+        if (sender.hasPermission(LOCATE_PERMISSION)) {
+            Chat.send(sender, "§e/" + label + " §fsigns [page] §8- every sign that has announced, who placed it, with teleport links");
+        }
+        if (sender.hasPermission(ADMIN_PERMISSION)) {
+            Chat.send(sender, "§e/" + label + " §frelease §8- (admin) list every frequency, and free any of them");
+        }
         Chat.send(sender, "§e/" + label + " §fjammer list §8- what the Signal Jammer next to you is jamming");
         if (sender.hasPermission("radionetwork.songs.add")) {
             Chat.send(sender, "§e/" + label + " §fsong <add|list|info|rename|remove> §8- your note-block songs (add needs a Blank Disc)");
@@ -99,7 +112,7 @@ public final class RadioCommand implements CommandExecutor, TabCompleter {
             Chat.send(sender, "§e/" + label + " §fgive <item> [amount] [player] §8- " + String.join(", ", ITEM_NAMES));
         }
         if (sender.hasPermission(ANNOUNCE_PERMISSION)) {
-            Chat.send(sender, "§e/" + label + " §fannounce <world-key> <x> <y> <z> <channel> | <message> §8- free station announcement");
+            Chat.send(sender, "§e/" + label + " §fannounce [as:<player>] <world-key> <x> <y> <z> <channel> | <message> §8- free station announcement");
         }
         Chat.send(sender, "§7Set or change a password from the terminal's Frequency Settings torch.");
     }
@@ -114,28 +127,39 @@ public final class RadioCommand implements CommandExecutor, TabCompleter {
             Chat.send(sender, "§cYou don't have permission to make announcements.");
             return;
         }
-        String usage = "§cUsage: /radio announce <world-key> <x> <y> <z> <channel> | <message>";
-        if (args.length < 7) {
+        String usage = "§cUsage: /radio announce [as:<player>] <world-key> <x> <y> <z> <channel> | <message>";
+        // "as:<player>" says whose sign this is: the announcement only goes out if that player may speak on the channel.
+        String speaker = null;
+        int at = 1;
+        if (args.length > 1 && args[1].regionMatches(true, 0, "as:", 0, 3)) {
+            speaker = args[1].substring(3);
+            at = 2;
+            if (speaker.isBlank()) {
+                Chat.send(sender, usage);
+                return;
+            }
+        }
+        if (args.length < at + 6) {
             Chat.send(sender, usage);
             return;
         }
-        NamespacedKey key = NamespacedKey.fromString(args[1]);
+        NamespacedKey key = NamespacedKey.fromString(args[at]);
         World world = key == null ? null : Bukkit.getWorld(key);
         double x;
         double y;
         double z;
         try {
-            x = Double.parseDouble(args[2]);
-            y = Double.parseDouble(args[3]);
-            z = Double.parseDouble(args[4]);
+            x = Double.parseDouble(args[at + 1]);
+            y = Double.parseDouble(args[at + 2]);
+            z = Double.parseDouble(args[at + 3]);
         } catch (NumberFormatException e) {
             Chat.send(sender, usage);
             return;
         }
-        String rest = String.join(" ", java.util.Arrays.copyOfRange(args, 5, args.length));
+        String rest = String.join(" ", java.util.Arrays.copyOfRange(args, at + 4, args.length));
         int split = rest.indexOf(" | ");
         if (world == null || split < 0) {
-            Chat.send(sender, world == null ? "§cUnknown world: " + args[1] : usage);
+            Chat.send(sender, world == null ? "§cUnknown world: " + args[at] : usage);
             return;
         }
         String channel = RadioManager.cleanChannel(rest.substring(0, split));
@@ -147,8 +171,9 @@ public final class RadioCommand implements CommandExecutor, TabCompleter {
             Chat.send(sender, usage);
             return;
         }
-        if (!manager.announce(world, x, y, z, channel, message) && sender instanceof Player) {
-            Chat.send(sender, "§7No powered radio on §f" + channel + " §7is near that point.");
+        if (!manager.announce(world, x, y, z, channel, message, speaker) && sender instanceof Player) {
+            Chat.send(sender, "§7Nothing was announced: no powered radio on §f" + channel + " §7is near that point"
+                    + (speaker == null ? "." : ", or §f" + speaker + " §7may not speak on it."));
         }
     }
 
@@ -199,6 +224,10 @@ public final class RadioCommand implements CommandExecutor, TabCompleter {
             case "jammer" -> items.createJammer();
             case "scanner" -> items.createScanner();
             case "blank_disc" -> items.createBlankDisc(1);
+            case "decommissioned_terminal" -> items.createDecommissioned(RadioItem.Retired.TERMINAL);
+            case "decommissioned_jukebox" -> items.createDecommissioned(RadioItem.Retired.JUKEBOX);
+            case "decommissioned_repeater" -> items.createDecommissioned(RadioItem.Retired.REPEATER);
+            case "decommissioned_jammer" -> items.createDecommissioned(RadioItem.Retired.JAMMER);
             default -> items.createCable(1);
         };
         stack.setAmount(amount);
@@ -337,6 +366,130 @@ public final class RadioCommand implements CommandExecutor, TabCompleter {
         }
     }
 
+    /**
+     * {@code /radio signs [page]}: every spot that has produced an announcement, newest first, with who placed it, the
+     * channel, what it said last and a teleport link. Built so a sign that is being abused can be found and removed.
+     */
+    private void signs(CommandSender sender, String[] args) {
+        if (!sender.hasPermission(LOCATE_PERMISSION)) {
+            Chat.send(sender, "§cYou don't have permission to list announcing signs.");
+            return;
+        }
+        AnnouncementSigns log = manager.signs();
+        List<AnnouncementSigns.Entry> all = log == null ? List.of() : log.list();
+        if (all.isEmpty()) {
+            Chat.send(sender, "§7No sign has announced anything yet.");
+            return;
+        }
+        int pages = (all.size() + PAGE_SIZE - 1) / PAGE_SIZE;
+        int page = 1;
+        if (args.length > 1) {
+            try {
+                page = Math.max(1, Math.min(pages, Integer.parseInt(args[1])));
+            } catch (NumberFormatException e) {
+                Chat.send(sender, "§cUsage: /radio signs [page]");
+                return;
+            }
+        }
+        Chat.send(sender, "§6§lAnnouncing signs §7(" + all.size() + ") - page " + page + "/" + pages);
+        long now = System.currentTimeMillis();
+        for (AnnouncementSigns.Entry entry : all.subList((page - 1) * PAGE_SIZE, Math.min(all.size(), page * PAGE_SIZE))) {
+            String who = entry.placer().isEmpty() ? "§8unknown" : "§f" + entry.placer();
+            Component line = Chat.text("§7- §f" + entry.channel() + " §8\"" + entry.lastMessage() + "\" §7by " + who
+                    + " §b" + entry.x() + " " + entry.y() + " " + entry.z() + " §7x" + entry.count() + ", last "
+                    + Chat.duration(Math.max(0, now - entry.last()) / 1000) + " ago ");
+            NamespacedKey world = NamespacedKey.fromString(entry.world());
+            if (sender instanceof Player && world != null && Bukkit.getWorld(world) != null) {
+                // Stations put the sign two blocks under the rail, so the rail is the place to stand.
+                String teleport = "/execute in " + entry.world() + " run tp @s " + (entry.x() + 0.5) + " "
+                        + (entry.y() + 2) + " " + (entry.z() + 0.5);
+                line = line.append(Chat.text("§a§l[TP]").clickEvent(ClickEvent.runCommand(teleport))
+                        .hoverEvent(HoverEvent.showText(Chat.text("§7Teleport to this sign"))));
+            }
+            sender.sendMessage(line);
+        }
+        if (page < pages) {
+            Chat.send(sender, "§7Next page: §f/radio signs " + (page + 1));
+        }
+    }
+
+    /**
+     * {@code /radio release} for admins: lists every frequency (with a click-to-release button), and
+     * {@code /radio release <name>} asks to confirm before {@code /radio release <name> confirm} frees it. Everyone
+     * else, and an admin's bare {@code /radio release confirm}, free the frequency next to them as before.
+     */
+    private void release(CommandSender sender, String[] args) {
+        List<String> words = java.util.Arrays.asList(args).subList(1, args.length);
+        if (words.isEmpty() || (words.get(0).equalsIgnoreCase("list") && words.size() <= 2)) {
+            listFrequencies(sender, words.size() == 2 ? words.get(1) : "1");
+            return;
+        }
+        boolean confirm = words.size() > 1 && words.get(words.size() - 1).equalsIgnoreCase("confirm");
+        String name = RadioManager.cleanChannel(String.join(" ", confirm ? words.subList(0, words.size() - 1) : words));
+        Frequency frequency = manager.frequencies().get(name);
+        if (frequency == null) {
+            frequency = manager.frequencies().all().stream().filter(f -> f.name().equalsIgnoreCase(name)).findFirst().orElse(null);
+        }
+        if (frequency == null) {
+            Chat.send(sender, "§cNo frequency called §f" + name + "§c. Run §f/radio release §cto see them all.");
+            return;
+        }
+        String command = "/radio release " + frequency.name();
+        if (!confirm) {
+            Component ask = Chat.text("§eThis frees §6" + frequency.name() + " §e(owned by §6" + frequency.owner()
+                    + "§e) for anyone to claim and erases its password and trusted list. Run §f" + command + " confirm §eto continue. ");
+            sender.sendMessage(sender instanceof Player
+                    ? ask.append(Chat.text("§a§l[CONFIRM]").clickEvent(ClickEvent.runCommand(command + " confirm"))
+                            .hoverEvent(HoverEvent.showText(Chat.text("§7Free this frequency now"))))
+                    : ask);
+            return;
+        }
+        manager.frequencies().release(frequency);
+        manager.save();
+        Chat.send(sender, "§aFrequency §f" + frequency.name() + " §areleased. Radios tuned to it stay offline until someone claims it.");
+        Player owner = Bukkit.getPlayerExact(frequency.owner());
+        if (owner != null && !owner.equals(sender)) {
+            Alerts.send(owner, Alerts.Level.YELLOW, "Access", "An admin released " + Alerts.name(frequency.name())
+                    + ". Radios tuned to it are offline until it is claimed again.");
+        }
+    }
+
+    private void listFrequencies(CommandSender sender, String pageText) {
+        List<Frequency> all = manager.frequencies().all().stream()
+                .sorted(Comparator.comparing(Frequency::name, String.CASE_INSENSITIVE_ORDER)).toList();
+        if (all.isEmpty()) {
+            Chat.send(sender, "§7There are no frequencies.");
+            return;
+        }
+        int pages = (all.size() + PAGE_SIZE - 1) / PAGE_SIZE;
+        int page;
+        try {
+            page = Math.max(1, Math.min(pages, Integer.parseInt(pageText)));
+        } catch (NumberFormatException e) {
+            Chat.send(sender, "§cUsage: /radio release list [page]");
+            return;
+        }
+        Chat.send(sender, "§6§lFrequencies §7(" + all.size() + ") - page " + page + "/" + pages);
+        long now = System.currentTimeMillis();
+        for (Frequency frequency : all.subList((page - 1) * PAGE_SIZE, Math.min(all.size(), page * PAGE_SIZE))) {
+            long radios = manager.all().stream().filter(r -> frequency.name().equals(r.channel())).count();
+            boolean ownerOnline = Bukkit.getPlayerExact(frequency.owner()) != null;
+            String seen = ownerOnline ? "online" : Chat.duration(Math.max(0, now - frequency.lastSeen()) / 1000) + " ago";
+            String text = "§7- §f" + frequency.name() + " §7by §f" + frequency.owner() + " §8[" + frequency.access().name()
+                    + ", " + frequency.speech().name() + "] §7" + radios + " radio" + (radios == 1 ? "" : "s")
+                    + ", owner seen " + seen + " ";
+            Component line = Chat.text(text);
+            sender.sendMessage(sender instanceof Player
+                    ? line.append(Chat.text("§c§l[RELEASE]")
+                            .clickEvent(ClickEvent.runCommand("/radio release " + frequency.name()))
+                            .hoverEvent(HoverEvent.showText(Chat.text("§7Free this frequency (asks to confirm first)"))))
+                    : line);
+        }
+        if (page < pages) {
+            Chat.send(sender, "§7Next page: §f/radio release list " + (page + 1));
+        }
+    }
+
     private void locate(CommandSender sender, String[] args) {
         if (!sender.hasPermission(LOCATE_PERMISSION)) {
             Chat.send(sender, "§cYou don't have permission to locate radios.");
@@ -400,6 +553,7 @@ public final class RadioCommand implements CommandExecutor, TabCompleter {
             options.add("jammer");
             if (sender.hasPermission(LOCATE_PERMISSION)) {
                 options.add("locate");
+                options.add("signs");
             }
             if (sender.hasPermission(ANNOUNCE_PERMISSION)) {
                 options.add("announce");
@@ -428,6 +582,12 @@ public final class RadioCommand implements CommandExecutor, TabCompleter {
                 case 4 -> Bukkit.getOnlinePlayers().stream().map(Player::getName).toList();
                 default -> List.of();
             };
+            return options.stream().filter(o -> o.toLowerCase(Locale.ROOT).startsWith(prefix)).toList();
+        }
+        if (args[0].equalsIgnoreCase("release") && args.length == 2 && sender.hasPermission(ADMIN_PERMISSION)) {
+            String prefix = args[1].toLowerCase(Locale.ROOT);
+            List<String> options = new java.util.ArrayList<>(List.of("list", "confirm"));
+            manager.frequencies().all().forEach(f -> options.add(f.name()));
             return options.stream().filter(o -> o.toLowerCase(Locale.ROOT).startsWith(prefix)).toList();
         }
         return frequencyCommand.onTabComplete(sender, command, alias, args);
