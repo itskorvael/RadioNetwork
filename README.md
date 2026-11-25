@@ -12,6 +12,7 @@ Stationary **Radio Terminals** (Lodestones) carry text and voice over named **fr
 - Signal Repeaters (relays), Radio Jukeboxes (vanilla discs and player songs: note-block and MP3), Signal Cables
 - Signal Jammers, Signal Scanners with the Decoder puzzle, encrypted frequencies
 - Decommissioned terminals, jukeboxes, repeaters and jammers: scenery that looks the part and does nothing. Put a working item alone in a crafting grid, or `/radio give decommissioned_terminal` (also `_jukebox`, `_repeater`, `_jammer`)
+- Local chat: ordinary chat only carries 32 blocks (configurable), so a radio is how you talk across a distance. `/whisper` (or `/w`) reaches 6 blocks, and people just outside see that something was said; `/shout` reaches 64, clear up close and breaking up toward its edge, with a cooldown, and from beyond talking range the speaker is only "a voice". Players with `radionetwork.localchat.global` are heard by everyone in ordinary chat; `radionetwork.localchat.spy` hears everything
 - Weather and night effects, and lightning that knocks terminals offline and cuts cables
 - One shared alert format across the plugin
 

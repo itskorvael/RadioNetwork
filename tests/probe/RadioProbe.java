@@ -137,6 +137,7 @@ public final class RadioProbe extends JavaPlugin {
         section("Items", this::itemChecks);
         section("Decommissioned items and blocks", this::decommissioned);
         section("Menu text", this::menuText);
+        section("Local chat", this::localChat);
         section("Frequencies and access", this::frequencyChecks);
         section("Terminals, fuel and announcements", this::terminalChecks);
         section("Relays", this::relayChecks);
@@ -261,6 +262,71 @@ public final class RadioProbe extends JavaPlugin {
         eq("red alert delay maximum", c.getDouble("scanner.red-alert-delay-max-seconds"), 180.0);
         eq("yellow alert delay minimum", c.getDouble("scanner.yellow-alert-delay-min-seconds"), 10.0);
         eq("yellow alert delay maximum", c.getDouble("scanner.yellow-alert-delay-max-seconds"), 40.0);
+    }
+
+    // --------------------------------------------------------------- local chat
+
+    private void localChat() {
+        var c = radio.getConfig();
+        eq("local chat is on", c.getBoolean("local-chat.enabled"), true);
+        eq("local chat radius", c.getDouble("local-chat.radius"), 32.0);
+        eq("local chat vertical reach", c.getDouble("local-chat.vertical"), 32.0);
+        eq("local chat tells a lonely speaker", c.getBoolean("local-chat.lonely-notice"), true);
+
+        org.bukkit.Location me = new org.bukkit.Location(world, 0.5, 64, 0.5);
+        ok("a player beside you hears you", dev.radionetwork.LocalChat.hears(me, new org.bukkit.Location(world, 3.5, 64, 0.5), 50, 64));
+        ok("a player exactly at the radius hears you", dev.radionetwork.LocalChat.hears(me, new org.bukkit.Location(world, 50.5, 64, 0.5), 50, 64));
+        ok("a player just past the radius does not", !dev.radionetwork.LocalChat.hears(me, new org.bukkit.Location(world, 51.5, 64, 0.5), 50, 64));
+        ok("distance is measured across, not along an axis", !dev.radionetwork.LocalChat.hears(me, new org.bukkit.Location(world, 40.5, 64, 40.5), 50, 64));
+        ok("a diagonal inside the radius hears you", dev.radionetwork.LocalChat.hears(me, new org.bukkit.Location(world, 30.5, 64, 30.5), 50, 64));
+        ok("height up to the vertical reach still hears you", dev.radionetwork.LocalChat.hears(me, new org.bukkit.Location(world, 0.5, 128, 0.5), 50, 64));
+        ok("height past the vertical reach does not", !dev.radionetwork.LocalChat.hears(me, new org.bukkit.Location(world, 0.5, 129, 0.5), 50, 64));
+        ok("a cave deep under a base still hears it", dev.radionetwork.LocalChat.hears(me, new org.bukkit.Location(world, 10.5, 20, 10.5), 50, 64));
+        ok("hearing works both ways", dev.radionetwork.LocalChat.hears(new org.bukkit.Location(world, 3.5, 64, 0.5), me, 50, 64));
+        for (org.bukkit.World other : Bukkit.getWorlds()) {
+            if (!other.equals(world)) {
+                ok("another world never hears you", !dev.radionetwork.LocalChat.hears(me, new org.bukkit.Location(other, 0.5, 64, 0.5), 50, 64));
+                break;
+            }
+        }
+
+        ok("the global permission exists, for ops", Bukkit.getPluginManager().getPermission(dev.radionetwork.LocalChat.GLOBAL) != null
+                && Bukkit.getPluginManager().getPermission(dev.radionetwork.LocalChat.GLOBAL).getDefault() == org.bukkit.permissions.PermissionDefault.OP);
+        ok("the spy permission exists, for nobody", Bukkit.getPluginManager().getPermission(dev.radionetwork.LocalChat.SPY) != null
+                && Bukkit.getPluginManager().getPermission(dev.radionetwork.LocalChat.SPY).getDefault() == org.bukkit.permissions.PermissionDefault.FALSE);
+        // Whisper and shout tiers
+        eq("whisper reaches 6 blocks", c.getDouble("local-chat.whisper.radius"), 6.0);
+        eq("whisper is seen just outside", c.getBoolean("local-chat.whisper.notice"), true);
+        eq("shout reaches 64 blocks", c.getDouble("local-chat.shout.radius"), 64.0);
+        eq("shout is clear to 40 blocks", c.getDouble("local-chat.shout.clear-radius"), 40.0);
+        eq("shout cooldown", c.getDouble("local-chat.shout.cooldown-seconds"), 5.0);
+        eq("far shouts are anonymous", c.getBoolean("local-chat.shout.anonymous"), true);
+        var r = new VoiceCommand.Ranges(32, 32, 6, 64, 40);
+        var W = VoiceCommand.Tier.WHISPER;
+        var S = VoiceCommand.Tier.SHOUT;
+        eq("whisper: beside you is heard", VoiceCommand.reach(W, 3, 0, r, true), VoiceCommand.Reach.FULL);
+        eq("whisper: at 6 blocks is heard", VoiceCommand.reach(W, 6, 0, r, true), VoiceCommand.Reach.FULL);
+        eq("whisper: 7 blocks away only sees it", VoiceCommand.reach(W, 7, 0, r, true), VoiceCommand.Reach.CUE);
+        eq("whisper: 32 blocks away still sees it", VoiceCommand.reach(W, 32, 0, r, true), VoiceCommand.Reach.CUE);
+        eq("whisper: past talking range sees nothing", VoiceCommand.reach(W, 33, 0, r, true), VoiceCommand.Reach.NONE);
+        eq("whisper: with the cue off, outside is nothing", VoiceCommand.reach(W, 7, 0, r, false), VoiceCommand.Reach.NONE);
+        eq("whisper: another floor up is not heard", VoiceCommand.reach(W, 2, 33, r, true), VoiceCommand.Reach.NONE);
+        eq("shout: at 64 blocks is heard", VoiceCommand.reach(S, 64, 0, r, true), VoiceCommand.Reach.FULL);
+        eq("shout: at 65 blocks is not", VoiceCommand.reach(S, 65, 0, r, true), VoiceCommand.Reach.NONE);
+        eq("shout: too far up is not heard", VoiceCommand.reach(S, 10, 33, r, true), VoiceCommand.Reach.NONE);
+        eq("shout: clear inside 40 blocks", VoiceCommand.bars(40, r), 4);
+        eq("shout: still near the clear edge", VoiceCommand.bars(41, r), 4);
+        eq("shout: a third of the way out", VoiceCommand.bars(49, r), 3);
+        eq("shout: two thirds out", VoiceCommand.bars(57, r), 2);
+        eq("shout: at the edge it is thin", VoiceCommand.bars(64, r), 1);
+        eq("shout: a shout never carries less than normal talk", new VoiceCommand(radio instanceof dev.radionetwork.RadioNetworkPlugin p ? p : null, mgr).ranges().shout() >= 32, true);
+        var cmd = Bukkit.getPluginCommand("whisper");
+        ok("/whisper is registered to this plugin", cmd != null && cmd.getPlugin() == radio && cmd.getExecutor() instanceof VoiceCommand);
+        ok("/shout is registered to this plugin", Bukkit.getPluginCommand("shout") != null && Bukkit.getPluginCommand("shout").getExecutor() instanceof VoiceCommand);
+        var w = Bukkit.getCommandMap().getCommand("w");
+        ok("/w is the same command as /whisper (not vanilla's /w)", w != null && w == cmd);
+        ok("the chat listener is registered", io.papermc.paper.event.player.AsyncChatEvent.getHandlerList().getRegisteredListeners(radio)
+                .stream().anyMatch(l -> l.getListener() instanceof dev.radionetwork.LocalChat));
     }
 
     // -------------------------------------------------------------------- items

@@ -30,6 +30,31 @@ broadcast:
   # Seconds a player must wait between /broadcast messages (voice is not limited).
   cooldown-seconds: 3
 
+# Local chat: ordinary chat is only heard by players near the speaker, in the same world. Radio traffic (/broadcast,
+# voice, station announcements) is not chat and is not affected: crossing a distance is what a terminal is for.
+# The console still sees everything. Permissions: radionetwork.localchat.global (default: op) makes a player's chat
+# reach everyone; radionetwork.localchat.spy (default: nobody) lets a player hear all chat, whispers and shouts.
+local-chat:
+  enabled: true
+  # How far ordinary talk carries sideways, in blocks.
+  radius: 32
+  # How far up or down, in blocks (for talk, whispers and shouts).
+  vertical: 32
+  # When nobody is in range, tell the speaker on the action bar (never in chat).
+  lonely-notice: true
+  # /whisper (or /w): only people right beside you hear it.
+  whisper:
+    radius: 6
+    # People outside that, but within ordinary talking range, see "<name> whispers something." (not the words).
+    notice: true
+  # /shout: carries much further than talk. Clear up to clear-radius, then words drop out toward the edge.
+  shout:
+    radius: 64
+    clear-radius: 40
+    cooldown-seconds: 5
+    # Beyond ordinary talking range, the speaker shows as "A voice" instead of a name.
+    anonymous: true
+
 announcements:
   # System announcements (/radio announce, used by AutomatedTrains) are carried by the nearest
   # powered radio on the channel within this many blocks of the announcement point. They are free.

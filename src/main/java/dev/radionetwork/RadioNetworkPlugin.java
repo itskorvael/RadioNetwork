@@ -35,6 +35,7 @@ public final class RadioNetworkPlugin extends JavaPlugin {
         getServer().getPluginManager().registerEvents(new RadioListener(this, manager, radioItem), this);
         retired = new RetiredBlocks(this, radioItem);
         getServer().getPluginManager().registerEvents(retired, this);
+        getServer().getPluginManager().registerEvents(new LocalChat(this), this);
         getServer().getPluginManager().registerEvents(new ReceiverListener(this, manager, radioItem, portables), this);
         getServer().getScheduler().runTaskTimer(this, portables::tick, 20L, 20L);
 
@@ -70,6 +71,14 @@ public final class RadioNetworkPlugin extends JavaPlugin {
         getServer().getScheduler().runTaskTimer(this, music::tick, 20L, 20L);
         // Note-block songs are played note by note, so they are driven every game tick.
         getServer().getScheduler().runTaskTimer(this, () -> music.songTick(System.currentTimeMillis()), 1L, 1L);
+
+        var voice = new VoiceCommand(this, manager);
+        for (String name : new String[]{"whisper", "shout"}) {
+            var voiceCommand = getCommand(name);
+            if (voiceCommand != null) {
+                voiceCommand.setExecutor(voice);
+            }
+        }
 
         var broadcast = getCommand("broadcast");
         if (broadcast != null) {

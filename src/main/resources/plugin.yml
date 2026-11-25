@@ -16,6 +16,18 @@ commands:
       - bc
     permission: radionetwork.use
 
+  whisper:
+    description: Say something only people right beside you can hear. Those just outside see that you said something.
+    usage: /whisper <message>
+    aliases:
+      - w
+    permission: radionetwork.use
+
+  shout:
+    description: Say something that carries much further than normal talk, breaking up toward its edge.
+    usage: /shout <message>
+    permission: radionetwork.use
+
   radio:
     description: Manage your radio frequency (members, trust, access, transfer, release) or, for ops, locate every radio, see which signs announce, and list or release any frequency.
     usage: /radio <info|members|list|claim|mode|access|trust|untrust|transfer|release|locate|signs|give>
@@ -37,6 +49,12 @@ permissions:
   radionetwork.give:
     description: Use /radio give to hand out the craftable radio items.
     default: op
+  radionetwork.localchat.global:
+    description: Chat from this player reaches everyone, whatever the distance (local chat).
+    default: op
+  radionetwork.localchat.spy:
+    description: Hear all chat, whatever the distance (local chat).
+    default: false
   radionetwork.songs.add:
     description: Add note-block songs from a link (needs a Blank Disc).
     default: true
