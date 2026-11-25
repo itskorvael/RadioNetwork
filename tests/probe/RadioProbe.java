@@ -292,8 +292,8 @@ public final class RadioProbe extends JavaPlugin {
 
         ok("the global permission exists, for ops", Bukkit.getPluginManager().getPermission(dev.radionetwork.LocalChat.GLOBAL) != null
                 && Bukkit.getPluginManager().getPermission(dev.radionetwork.LocalChat.GLOBAL).getDefault() == org.bukkit.permissions.PermissionDefault.OP);
-        ok("the spy permission exists, for nobody", Bukkit.getPluginManager().getPermission(dev.radionetwork.LocalChat.SPY) != null
-                && Bukkit.getPluginManager().getPermission(dev.radionetwork.LocalChat.SPY).getDefault() == org.bukkit.permissions.PermissionDefault.FALSE);
+        ok("the spy permission exists, for ops", Bukkit.getPluginManager().getPermission(dev.radionetwork.LocalChat.SPY) != null
+                && Bukkit.getPluginManager().getPermission(dev.radionetwork.LocalChat.SPY).getDefault() == org.bukkit.permissions.PermissionDefault.OP);
         // Whisper and shout tiers
         eq("whisper reaches 6 blocks", c.getDouble("local-chat.whisper.radius"), 6.0);
         eq("whisper is seen just outside", c.getBoolean("local-chat.whisper.notice"), true);

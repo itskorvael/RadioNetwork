@@ -33,7 +33,8 @@ broadcast:
 # Local chat: ordinary chat is only heard by players near the speaker, in the same world. Radio traffic (/broadcast,
 # voice, station announcements) is not chat and is not affected: crossing a distance is what a terminal is for.
 # The console still sees everything. Permissions: radionetwork.localchat.global (default: op) makes a player's chat
-# reach everyone; radionetwork.localchat.spy (default: nobody) lets a player hear all chat, whispers and shouts.
+# reach everyone; radionetwork.localchat.spy (default: op) lets a player hear all chat, whispers and shouts. Together
+# they let ops bypass local chat entirely.
 local-chat:
   enabled: true
   # How far ordinary talk carries sideways, in blocks.

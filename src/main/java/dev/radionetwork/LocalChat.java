@@ -16,7 +16,7 @@ import org.bukkit.event.Listener;
  * <p>
  * Chat that another handler has already taken (the private answers to the terminal's text prompts) is left alone.
  * The console still sees everything, and so do players with {@link #SPY}; players with {@link #GLOBAL} are heard
- * by everyone.
+ * by everyone. Both default to op, so ops bypass local chat in both directions.
  */
 public final class LocalChat implements Listener {
 

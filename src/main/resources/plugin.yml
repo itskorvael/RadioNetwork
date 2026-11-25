@@ -53,8 +53,8 @@ permissions:
     description: Chat from this player reaches everyone, whatever the distance (local chat).
     default: op
   radionetwork.localchat.spy:
-    description: Hear all chat, whatever the distance (local chat).
-    default: false
+    description: Hear all chat, whispers and shouts, whatever the distance (local chat).
+    default: op
   radionetwork.songs.add:
     description: Add note-block songs from a link (needs a Blank Disc).
     default: true
