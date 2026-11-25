@@ -869,7 +869,7 @@ public final class Jammers {
             return;
         }
         for (String name : names) {
-            Chat.send(sender, "§eFrequency: §f" + name);
+            Chat.send(sender, "§7Frequency: §f" + name);
             Chat.send(sender, "§7  Terminals:");
             List<String> t = terminals.getOrDefault(name, List.of());
             if (t.isEmpty()) {

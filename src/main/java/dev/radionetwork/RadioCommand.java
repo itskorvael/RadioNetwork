@@ -81,40 +81,38 @@ public final class RadioCommand implements CommandExecutor, TabCompleter {
     }
 
     private void help(CommandSender sender, String label) {
-        Chat.send(sender, "§6§lRadio commands §7(stand next to a radio)");
+        Chat.send(sender, "§fRadio commands §8(next to a terminal)");
         for (String line : List.of(
-                "info §8- show this frequency",
-                "members §8- owner, trusted and joined players",
-                "list §8- frequencies you own",
-                "claim §8- claim your radio's unclaimed frequency",
-                "mode <open|closed> §8- who may speak",
-                "access <public|encrypted> §8- who may join",
-                "trust <player> §8- trust a player on this frequency",
-                "untrust <player> §8- remove a trusted player",
-                "transfer <player> §8- give the frequency away",
-                "release [confirm] §8- free the frequency")) {
-            Chat.send(sender, "§e/" + label + " §f" + line);
+                "info §8- §7this frequency",
+                "members §8- §7owner, trusted and joined players",
+                "list §8- §7frequencies you own",
+                "claim §8- §7claim an unowned frequency",
+                "mode <open|closed> §8- §7who may speak",
+                "access <public|encrypted> §8- §7who may join",
+                "trust <player> §8- §7let a player join and speak",
+                "untrust <player> §8- §7take that back",
+                "transfer <player> §8- §7give the frequency away",
+                "release [confirm] §8- §7free the frequency")) {
+            Chat.send(sender, "§f/" + label + " " + line);
         }
         if (sender.hasPermission(LOCATE_PERMISSION)) {
-            Chat.send(sender, "§e/" + label + " §flocate [page] §8- list every radio with teleport links");
-        }
-        if (sender.hasPermission(LOCATE_PERMISSION)) {
-            Chat.send(sender, "§e/" + label + " §fsigns [page] §8- every sign that has announced, who placed it, with teleport links");
+            Chat.send(sender, "§f/" + label + " locate [page] §8- §7every terminal, with teleport links");
+            Chat.send(sender, "§f/" + label + " signs [page] §8- §7every announcing sign and who placed it");
         }
         if (sender.hasPermission(ADMIN_PERMISSION)) {
-            Chat.send(sender, "§e/" + label + " §frelease §8- (admin) list every frequency, and free any of them");
+            Chat.send(sender, "§f/" + label + " release §8- §7(admin) list every frequency and free any of them");
         }
-        Chat.send(sender, "§e/" + label + " §fjammer list §8- what the Signal Jammer next to you is jamming");
+        Chat.send(sender, "§f/" + label + " jammer list §8- §7what the jammer next to you is jamming");
         if (sender.hasPermission("radionetwork.songs.add")) {
-            Chat.send(sender, "§e/" + label + " §fsong <add|list|info|rename|remove> §8- your note-block songs (add needs a Blank Disc)");
+            Chat.send(sender, "§f/" + label + " song <add|list|info|rename|remove> §8- §7your note-block songs");
         }
         if (sender.hasPermission(GIVE_PERMISSION)) {
-            Chat.send(sender, "§e/" + label + " §fgive <item> [amount] [player] §8- " + String.join(", ", ITEM_NAMES));
+            Chat.send(sender, "§f/" + label + " give <item> [amount] [player] §8- §7" + String.join(", ", ITEM_NAMES));
         }
         if (sender.hasPermission(ANNOUNCE_PERMISSION)) {
-            Chat.send(sender, "§e/" + label + " §fannounce [as:<player>] <world-key> <x> <y> <z> <channel> | <message> §8- free station announcement");
+            Chat.send(sender, "§f/" + label + " announce [as:<player>] <world-key> <x> <y> <z> <channel> | <message> §8- §7free announcement");
         }
-        Chat.send(sender, "§7Set or change a password from the terminal's Frequency Settings torch.");
+        Chat.send(sender, "§8Passwords are set from the terminal's Frequency menu.");
     }
 
     /**
@@ -234,16 +232,16 @@ public final class RadioCommand implements CommandExecutor, TabCompleter {
         // Anything that does not fit in the inventory drops at the player's feet.
         target.getInventory().addItem(stack).values()
                 .forEach(left -> target.getWorld().dropItemNaturally(target.getLocation(), left));
-        Chat.send(sender, "§aGave " + amount + " " + name + (amount == 1 ? "" : "s") + " to " + target.getName() + ".");
+        Chat.send(sender, "§7Gave §f" + amount + " " + name + (amount == 1 ? "" : "s") + " §7to §f" + target.getName() + "§7.");
         if (!target.equals(sender)) {
-            Chat.send(target, "§aYou received " + amount + " " + name + (amount == 1 ? "" : "s") + ".");
+            Chat.send(target, "§7You received §f" + amount + " " + name + (amount == 1 ? "" : "s") + "§7.");
         }
     }
 
     /** {@code /radio jammer list}: what the jammer you are standing next to is jamming. */
     private void jammer(CommandSender sender, String[] args, String label) {
         if (args.length < 2 || !args[1].equalsIgnoreCase("list")) {
-            Chat.send(sender, "§cUsage: /" + label + " jammer list  §7(stand next to a Signal Jammer)");
+            Chat.send(sender, "§cUsage: /" + label + " jammer list");
             return;
         }
         if (manager.jammers() == null) {
@@ -294,13 +292,13 @@ public final class RadioCommand implements CommandExecutor, TabCompleter {
                     Chat.send(sender, "§7" + who + " has no songs.");
                     return;
                 }
-                Chat.send(sender, "§6§lSongs by " + who);
+                Chat.send(sender, "§fSongs by " + who);
                 for (SongLibrary.Meta m : found) {
                     Chat.send(sender, "§7- §f" + m.name() + " §7(" + Chat.duration(m.seconds()) + (m.isAudio() ? ", audio" : "") + ")" + (m.active() ? "" : " §c[removed]"));
                 }
             }
             case "info" -> withSong(sender, rest, admin, meta -> {
-                Chat.send(sender, "§6§l" + meta.name() + (meta.active() ? "" : " §c[removed]"));
+                Chat.send(sender, "§f" + meta.name() + (meta.active() ? "" : " §c[removed]"));
                 Chat.send(sender, "§7Added by §f" + meta.uploader() + " §7on " + DATE.format(java.time.Instant.ofEpochMilli(meta.added())));
                 Chat.send(sender, "§7Type: §f" + (meta.isAudio() ? "audio (voice chat)" : "note blocks") + " §7Length: §f" + Chat.duration(meta.seconds()) + " §7Size: §f" + Math.max(1, meta.bytes() / 1024) + " KB §7Id: §f" + meta.id());
                 if (admin) {
@@ -325,12 +323,12 @@ public final class RadioCommand implements CommandExecutor, TabCompleter {
                         return;
                     }
                     songs.rename(meta, name, sender.getName());
-                    Chat.send(sender, "§aRenamed to §f" + name + "§a. Discs already made show the old name until they are re-crafted.");
+                    Chat.send(sender, "§7Renamed to §f" + name + "§7. Discs already made keep the old name.");
                 });
             }
             case "remove" -> withSong(sender, rest, admin, meta -> {
                 songs.remove(meta, sender.getName());
-                Chat.send(sender, "§aRemoved §f" + meta.name() + "§a. Discs of it stop playing.");
+                Chat.send(sender, "§7Removed §f" + meta.name() + "§7. Its discs stop playing.");
             });
             case "give" -> {
                 if (!admin) {
@@ -348,7 +346,7 @@ public final class RadioCommand implements CommandExecutor, TabCompleter {
                 }
                 player.getInventory().addItem(items.createSongDisc(meta)).values()
                         .forEach(left -> player.getWorld().dropItemNaturally(player.getLocation(), left));
-                Chat.send(sender, "§aGave the disc for §f" + meta.name() + "§a to " + player.getName() + ".");
+                Chat.send(sender, "§7Gave the disc for §f" + meta.name() + " §7to §f" + player.getName() + "§7.");
             }
             default -> Chat.send(sender, "§cUsage: /" + label + " song <add|list|info|rename|remove|give>");
         }
@@ -391,7 +389,7 @@ public final class RadioCommand implements CommandExecutor, TabCompleter {
                 return;
             }
         }
-        Chat.send(sender, "§6§lAnnouncing signs §7(" + all.size() + ") - page " + page + "/" + pages);
+        Chat.send(sender, "§fAnnouncing signs §8(" + all.size() + ", page " + page + "/" + pages + ")");
         long now = System.currentTimeMillis();
         for (AnnouncementSigns.Entry entry : all.subList((page - 1) * PAGE_SIZE, Math.min(all.size(), page * PAGE_SIZE))) {
             String who = entry.placer().isEmpty() ? "§8unknown" : "§f" + entry.placer();
@@ -403,7 +401,7 @@ public final class RadioCommand implements CommandExecutor, TabCompleter {
                 // Stations put the sign two blocks under the rail, so the rail is the place to stand.
                 String teleport = "/execute in " + entry.world() + " run tp @s " + (entry.x() + 0.5) + " "
                         + (entry.y() + 2) + " " + (entry.z() + 0.5);
-                line = line.append(Chat.text("§a§l[TP]").clickEvent(ClickEvent.runCommand(teleport))
+                line = line.append(Chat.text("§a[Teleport]").clickEvent(ClickEvent.runCommand(teleport))
                         .hoverEvent(HoverEvent.showText(Chat.text("§7Teleport to this sign"))));
             }
             sender.sendMessage(line);
@@ -436,17 +434,17 @@ public final class RadioCommand implements CommandExecutor, TabCompleter {
         }
         String command = "/radio release " + frequency.name();
         if (!confirm) {
-            Component ask = Chat.text("§eThis frees §6" + frequency.name() + " §e(owned by §6" + frequency.owner()
-                    + "§e) for anyone to claim and erases its password and trusted list. Run §f" + command + " confirm §eto continue. ");
+            Component ask = Chat.text("§7This frees §f" + frequency.name() + " §7(owned by §f" + frequency.owner()
+                    + "§7) for anyone to claim and erases its password and trusted list. Run §f" + command + " confirm §7to continue. ");
             sender.sendMessage(sender instanceof Player
-                    ? ask.append(Chat.text("§a§l[CONFIRM]").clickEvent(ClickEvent.runCommand(command + " confirm"))
+                    ? ask.append(Chat.text("§a[Confirm]").clickEvent(ClickEvent.runCommand(command + " confirm"))
                             .hoverEvent(HoverEvent.showText(Chat.text("§7Free this frequency now"))))
                     : ask);
             return;
         }
         manager.frequencies().release(frequency);
         manager.save();
-        Chat.send(sender, "§aFrequency §f" + frequency.name() + " §areleased. Radios tuned to it stay offline until someone claims it.");
+        Chat.send(sender, "§f" + frequency.name() + " §7released. Radios on it stay offline until someone claims it.");
         Player owner = Bukkit.getPlayerExact(frequency.owner());
         if (owner != null && !owner.equals(sender)) {
             Alerts.send(owner, Alerts.Level.YELLOW, "Access", "An admin released " + Alerts.name(frequency.name())
@@ -469,7 +467,7 @@ public final class RadioCommand implements CommandExecutor, TabCompleter {
             Chat.send(sender, "§cUsage: /radio release list [page]");
             return;
         }
-        Chat.send(sender, "§6§lFrequencies §7(" + all.size() + ") - page " + page + "/" + pages);
+        Chat.send(sender, "§fFrequencies §8(" + all.size() + ", page " + page + "/" + pages + ")");
         long now = System.currentTimeMillis();
         for (Frequency frequency : all.subList((page - 1) * PAGE_SIZE, Math.min(all.size(), page * PAGE_SIZE))) {
             long radios = manager.all().stream().filter(r -> frequency.name().equals(r.channel())).count();
@@ -480,7 +478,7 @@ public final class RadioCommand implements CommandExecutor, TabCompleter {
                     + ", owner seen " + seen + " ";
             Component line = Chat.text(text);
             sender.sendMessage(sender instanceof Player
-                    ? line.append(Chat.text("§c§l[RELEASE]")
+                    ? line.append(Chat.text("§c[Release]")
                             .clickEvent(ClickEvent.runCommand("/radio release " + frequency.name()))
                             .hoverEvent(HoverEvent.showText(Chat.text("§7Free this frequency (asks to confirm first)"))))
                     : line);
@@ -515,7 +513,7 @@ public final class RadioCommand implements CommandExecutor, TabCompleter {
             }
         }
 
-        Chat.send(sender, "§6§lRadios §7(" + radios.size() + ") - page " + page + "/" + pages);
+        Chat.send(sender, "§fTerminals §8(" + radios.size() + ", page " + page + "/" + pages + ")");
         for (Radio radio : radios.subList((page - 1) * PAGE_SIZE, Math.min(radios.size(), page * PAGE_SIZE))) {
             sender.sendMessage(line(radio, sender instanceof Player));
         }
@@ -538,7 +536,7 @@ public final class RadioCommand implements CommandExecutor, TabCompleter {
         }
         String teleport = "/execute in " + world.getKey() + " run tp @s "
                 + (radio.x() + 0.5) + " " + (radio.y() + 1) + " " + (radio.z() + 0.5);
-        return line.append(Chat.text("§a§l[TP]")
+        return line.append(Chat.text("§a[Teleport]")
                 .clickEvent(ClickEvent.runCommand(teleport))
                 .hoverEvent(HoverEvent.showText(Chat.text("§7Teleport to this radio"))));
     }

@@ -31,31 +31,31 @@ public final class BroadcastCommand implements CommandExecutor {
         RadioManager.Transmitter tx = manager.findTransmitter(player);
         switch (tx.denial()) {
             case NO_RADIO -> {
-                Chat.send(player, "§cNo radio terminal within 5 blocks.");
+                Chat.send(player, "§cNo terminal within 5 blocks.");
                 return true;
             }
             case NOT_TUNED -> {
-                Chat.send(player, "§cTransmission failed. This terminal is not tuned to an active frequency.");
+                Chat.send(player, "§cThis terminal is not tuned to a frequency.");
                 return true;
             }
             case NO_ACCESS -> {
-                Chat.send(player, "§cTransmission failed. This terminal's operator no longer has access to its frequency.");
+                Chat.send(player, "§cThis terminal's operator no longer has access to its frequency.");
                 return true;
             }
             case ENCRYPTED -> {
-                Chat.send(player, "§cTransmission blocked. This frequency is encrypted and you do not have the key.");
+                Chat.send(player, "§cThis frequency is encrypted and you don't have the key.");
                 return true;
             }
             case CLOSED -> {
-                Chat.send(player, "§cTransmission blocked. Only the frequency owner and trusted players can speak here.");
+                Chat.send(player, "§cOnly the owner and trusted players can speak on this frequency.");
                 return true;
             }
             case NO_POWER -> {
-                Alerts.send(player, Alerts.Level.RED, "Transmission", "Transmission failed. This terminal has no power.");
+                Alerts.send(player, Alerts.Level.RED, "Power", "This terminal has no power.");
                 return true;
             }
             case JAMMED -> {
-                Alerts.send(player, Alerts.Level.RED, "Transmission", "Transmission failed. Heavy interference: this terminal is being jammed.");
+                Alerts.send(player, Alerts.Level.RED, "Signal", "Heavy interference. This terminal can't transmit.");
                 return true;
             }
             case NONE -> { }
@@ -70,7 +70,7 @@ public final class BroadcastCommand implements CommandExecutor {
 
         long wait = manager.broadcastCooldownLeft(player.getUniqueId());
         if (wait > 0) {
-            Chat.send(player, "§cChannel busy. Try again in " + String.format("%.1f", wait / 1000.0) + "s.");
+            Chat.send(player, "§cChannel busy. Wait " + String.format("%.1f", wait / 1000.0) + "s.");
             return true;
         }
         manager.markBroadcast(player.getUniqueId());

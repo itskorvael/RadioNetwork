@@ -49,7 +49,7 @@ public final class FrequencyCommand implements TabCompleter {
                 if (sub.equals("info")) {
                     info(player, frequency);
                 } else if (!isOwnerOrAdmin(player, frequency)) {
-                    Chat.send(player, "§cOnly the frequency owner (" + frequency.owner() + ") can do that.");
+                    Chat.send(player, "§cOnly the owner (" + frequency.owner() + ") can do that.");
                 } else {
                     owned(player, frequency, sub, args);
                 }
@@ -63,15 +63,15 @@ public final class FrequencyCommand implements TabCompleter {
     private Frequency nearbyFrequency(Player player) {
         List<Radio> near = manager.radiosNear(player.getLocation());
         if (near.isEmpty()) {
-            Chat.send(player, "§cStand within 5 blocks of a Radio Terminal to manage its frequency.");
+            Chat.send(player, "§cNo terminal within 5 blocks.");
             return null;
         }
         Radio radio = near.getFirst();
         Frequency frequency = manager.frequencyOf(radio);
         if (frequency == null) {
             Chat.send(player, radio.isTuned()
-                    ? "§cThe frequency §f" + radio.channel() + " §cis unclaimed. Use §f/radio claim §cif this is your radio."
-                    : "§cThis radio is not tuned to a frequency yet.");
+                    ? "§c" + radio.channel() + " has no owner. §f/radio claim §cclaims it, if the terminal is yours."
+                    : "§cThis terminal is not tuned to a frequency.");
         }
         return frequency;
     }
@@ -88,14 +88,14 @@ public final class FrequencyCommand implements TabCompleter {
                         return;
                     }
                 }
-                done(player, "§eFrequency §6" + frequency.name() + " §espeaking is now §6" + frequency.speech().name() + "§e.");
+                done(player, "§7Speaking on §f" + frequency.name() + " §7is now §f" + frequency.speech().name().toLowerCase(java.util.Locale.ROOT) + "§7.");
             }
             case "access" -> {
                 switch (arg.toLowerCase(Locale.ROOT)) {
                     case "public" -> frequency.access(Frequency.Access.PUBLIC);
                     case "encrypted", "private" -> {
                         if (!frequency.hasPassword()) {
-                            Chat.send(player, "§cSet a password first: right-click the Frequency Settings torch in the terminal.");
+                            Chat.send(player, "§cSet a password first, from the terminal's Frequency menu.");
                             return;
                         }
                         frequency.access(Frequency.Access.ENCRYPTED);
@@ -105,7 +105,7 @@ public final class FrequencyCommand implements TabCompleter {
                         return;
                     }
                 }
-                done(player, "§eFrequency §6" + frequency.name() + " §eis now §6" + frequency.access().name() + "§e.");
+                done(player, "§f" + frequency.name() + " §7is now §f" + frequency.access().name().toLowerCase(java.util.Locale.ROOT) + "§7.");
             }
             case "trust" -> {
                 if (!validName(player, arg)) {
@@ -116,22 +116,22 @@ public final class FrequencyCommand implements TabCompleter {
                     return;
                 }
                 frequency.trust(arg);
-                done(player, "§a" + arg + " is now trusted on §f" + frequency.name() + "§a: they can join and speak.");
+                done(player, "§f" + arg + " §7can now join and speak on §f" + frequency.name() + "§7.");
             }
             case "untrust" -> {
                 if (!validName(player, arg)) {
                     return;
                 }
                 if (!frequency.untrust(arg)) {
-                    Chat.send(player, "§c" + arg + " is not on the trusted list.");
+                    Chat.send(player, "§c" + arg + " is not trusted on this frequency.");
                     return;
                 }
-                done(player, "§e" + arg + " is no longer trusted on §6" + frequency.name() + "§e.");
+                done(player, "§f" + arg + " §7is no longer trusted on §f" + frequency.name() + "§7.");
             }
             case "transfer" -> {
                 Player target = Bukkit.getPlayerExact(arg);
                 if (target == null || target.equals(player)) {
-                    Chat.send(player, "§cName another player who is online: /radio transfer <player>");
+                    Chat.send(player, "§cName another player who is online.");
                     return;
                 }
                 String previous = frequency.owner();
@@ -139,18 +139,17 @@ public final class FrequencyCommand implements TabCompleter {
                 frequency.owner(target.getName());
                 frequency.trust(previous); // the old owner keeps access and speaking rights
                 frequency.lastSeen(System.currentTimeMillis());
-                done(player, "§aFrequency §f" + frequency.name() + " §atransferred to §f" + target.getName()
-                        + "§a. You stay on its trusted list.");
-                Chat.send(target, "§a" + player.getName() + " transferred the frequency §f" + frequency.name() + " §ato you.");
+                done(player, "§f" + frequency.name() + " §7now belongs to §f" + target.getName() + "§7. You stay trusted on it.");
+                Chat.send(target, "§f" + player.getName() + " §7gave you the frequency §f" + frequency.name() + "§7.");
             }
             case "release" -> {
                 if (!arg.equalsIgnoreCase("confirm")) {
-                    Chat.send(player, "§eThis frees §6" + frequency.name() + "§e for anyone to claim and erases its password and trusted list. "
-                            + "Run §f/radio release confirm §eto continue.");
+                    Chat.send(player, "§7This frees §f" + frequency.name() + " §7for anyone to claim and erases its password and trusted list. "
+                            + "Run §f/radio release confirm §7to continue.");
                     return;
                 }
                 manager.frequencies().release(frequency);
-                done(player, "§aFrequency §f" + frequency.name() + " §areleased. Radios tuned to it stay offline until someone claims it.");
+                done(player, "§f" + frequency.name() + " §7released. Radios on it stay offline until someone claims it.");
             }
             default -> { }
         }
@@ -168,11 +167,11 @@ public final class FrequencyCommand implements TabCompleter {
         }
         boolean canManage = isOwnerOrAdmin(player, frequency);
         if (!canManage && !frequency.hasAccess(player.getName())) {
-            Chat.send(player, "§cThis frequency is ENCRYPTED. Only people with access can see who is on it.");
+            Chat.send(player, "§cThis frequency is encrypted. Only people with access can see who is on it.");
             return;
         }
-        Chat.send(player, "§6§lMembers of " + frequency.name() + " §7(" + frequency.access().name() + ", "
-                + frequency.speech().name() + ")");
+        Chat.send(player, "§fMembers of " + frequency.name() + " §8(" + frequency.access().name().toLowerCase(java.util.Locale.ROOT) + ", "
+                + frequency.speech().name().toLowerCase(java.util.Locale.ROOT) + ")");
         Chat.send(player, "§7Owner: " + displayName(frequency.owner()));
         Chat.send(player, "§7Trusted (" + frequency.trusted().size() + "): " + names(frequency.trusted()));
         var portables = manager.portables();
@@ -185,7 +184,7 @@ public final class FrequencyCommand implements TabCompleter {
             Chat.send(player, "§a● §8online / hearing   §7● §8offline / no signal");
         } else {
             Chat.send(player, "§7Tuned in on a portable: §f" + tuned.size());
-            Chat.send(player, "§8The password and portable member names are only shown to the owner.");
+            Chat.send(player, "§8Joined and portable names are shown to the owner only.");
         }
     }
 
@@ -209,24 +208,24 @@ public final class FrequencyCommand implements TabCompleter {
         List<Radio> near = manager.radiosNear(player.getLocation());
         Radio radio = near.isEmpty() ? null : near.getFirst();
         if (radio == null || !radio.isTuned()) {
-            Chat.send(player, "§cStand next to one of your radios that is tuned to the frequency you want to claim.");
+            Chat.send(player, "§cStand next to a terminal tuned to the frequency you want.");
         } else if (manager.frequencies().get(radio.channel()) != null) {
             Chat.send(player, "§cThat frequency already has an owner.");
         } else if (!RadioManager.isOperator(player, radio)) {
-            Chat.send(player, "§cOnly this radio's operator can claim its frequency.");
+            Chat.send(player, "§cOnly the terminal's operator can claim it.");
         } else {
             manager.frequencies().claim(radio.channel(), player.getName());
-            done(player, "§aYou claimed the frequency §f" + radio.channel() + "§a.");
+            done(player, "§7You now own §f" + radio.channel() + "§7.");
         }
     }
 
     private void info(Player player, Frequency frequency) {
         long radios = manager.all().stream().filter(r -> r.channel().equals(frequency.name())).count();
-        Chat.send(player, "§6§lFrequency " + frequency.name());
+        Chat.send(player, "§fFrequency " + frequency.name());
         Chat.send(player, "§7Owner: §f" + frequency.owner());
-        Chat.send(player, "§7Access: §f" + frequency.access().name()
+        Chat.send(player, "§7Access: §f" + frequency.access().name().toLowerCase(java.util.Locale.ROOT)
                 + (frequency.access() == Frequency.Access.ENCRYPTED ? " §7(password = key)" : ""));
-        Chat.send(player, "§7Speaking: §f" + frequency.speech().name()
+        Chat.send(player, "§7Speaking: §f" + frequency.speech().name().toLowerCase(java.util.Locale.ROOT)
                 + (frequency.speech() == RadioMode.CLOSED ? " §7(owner + trusted)" : " §7(everyone with access)"));
         Chat.send(player, "§7Radios tuned: §f" + radios);
         Chat.send(player, "§7Your access: §f" + frequency.accessReason(player.getName()));
@@ -239,36 +238,36 @@ public final class FrequencyCommand implements TabCompleter {
     private void list(Player player) {
         List<Frequency> owned = manager.frequencies().ownedBy(player.getName());
         if (owned.isEmpty()) {
-            Chat.send(player, "§7You don't own any frequencies. Tune a radio to a new name to claim one.");
+            Chat.send(player, "§7You don't own any frequencies.");
             return;
         }
-        Chat.send(player, "§6§lYour frequencies");
+        Chat.send(player, "§fYour frequencies");
         for (Frequency frequency : owned) {
             long radios = manager.all().stream().filter(r -> r.channel().equals(frequency.name())).count();
-            Chat.send(player, "§7- §f" + frequency.name() + " §7" + frequency.access().name() + "/"
-                    + frequency.speech().name() + ", " + radios + " radio" + (radios == 1 ? "" : "s"));
+            Chat.send(player, "§7- §f" + frequency.name() + " §7" + frequency.access().name().toLowerCase(java.util.Locale.ROOT) + "/"
+                    + frequency.speech().name().toLowerCase(java.util.Locale.ROOT) + ", " + radios + " radio" + (radios == 1 ? "" : "s"));
         }
     }
 
     private void help(Player player, String label) {
-        Chat.send(player, "§6§lFrequency commands §7(stand next to a radio)");
+        Chat.send(player, "§fFrequency commands §8(next to a terminal)");
         for (String line : List.of(
-                "info §8- show this frequency",
-                "list §8- frequencies you own",
-                "claim §8- claim your radio's unclaimed frequency",
-                "mode <open|closed> §8- who may speak",
-                "access <public|encrypted> §8- who may join",
-                "trust|untrust <player> §8- invite list",
-                "transfer <player> §8- give the frequency away",
-                "release [confirm] §8- free the frequency")) {
-            Chat.send(player, "§e/" + label + " §f" + line);
+                "info §8- §7this frequency",
+                "list §8- §7frequencies you own",
+                "claim §8- §7claim an unowned frequency",
+                "mode <open|closed> §8- §7who may speak",
+                "access <public|encrypted> §8- §7who may join",
+                "trust|untrust <player> §8- §7let a player join and speak, or take that back",
+                "transfer <player> §8- §7give the frequency away",
+                "release [confirm] §8- §7free the frequency")) {
+            Chat.send(player, "§f/" + label + " " + line);
         }
-        Chat.send(player, "§7Set or change the password from the terminal's Frequency Settings torch.");
+        Chat.send(player, "§8Passwords are set from the terminal's Frequency menu.");
     }
 
     private boolean validName(Player player, String name) {
         if (!name.matches("[A-Za-z0-9_]{1,16}")) {
-            Chat.send(player, "§cEnter a valid player name.");
+            Chat.send(player, "§cNot a valid player name.");
             return false;
         }
         return true;
